@@ -110,7 +110,7 @@ Icons adapt automatically based on Nerd Font support.
 | Segment ID | Meaning | Icon(s) used |
 |---|---|---|
 | `pi` | Pi marker segment | `pi` icon (`` / `π`) |
-| `model` | Active model name, with provider in parentheses when available (optionally includes inline thinking tag) | `model` icon (`` / `◈`) |
+| `model` | Active model name, with `model_key` in parentheses when available (`provider/model-id`, e.g. `openai-codex/gpt-5.3-codex`) using a muted tone of the model color (optionally includes inline thinking tag) | `model` icon (`` / `◈`) |
 | `thinking` | Current thinking level (`think:off/min/low/med/high/xhigh`) | no icon (text-only) |
 | `path` | Current working directory (basename/abbreviated/full by preset) | `folder` icon (`` / `📁`) |
 | `git` | Branch and file-state counters (`*` unstaged, `+` staged, `?` untracked) | `branch` icon (`` / `⎇`), and `git` icon (`` / `⎇`) when branch text is hidden |

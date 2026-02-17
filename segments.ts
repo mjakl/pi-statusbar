@@ -1,7 +1,7 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
 import type { RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
-import { fg, rainbow, applyColor } from "./theme.js";
+import { fg, rainbow, applyColor, resolveColor } from "./theme.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
 
 // Helper to apply semantic color from context
@@ -35,6 +35,38 @@ function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
+function isHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+function toMutedHex(hex: string): `#${string}` {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+
+  // Desaturate toward neutral gray while preserving readability.
+  const gray = 128;
+  const keep = 0.62;
+  const nr = Math.round(r * keep + gray * (1 - keep));
+  const ng = Math.round(g * keep + gray * (1 - keep));
+  const nb = Math.round(b * keep + gray * (1 - keep));
+
+  const muted = `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
+  return muted as `#${string}`;
+}
+
+function colorMutedModelKey(ctx: SegmentContext, text: string): string {
+  const modelColor = resolveColor("model", ctx.colors);
+
+  if (typeof modelColor === "string" && isHexColor(modelColor)) {
+    return applyColor(ctx.theme, toMutedHex(modelColor), text);
+  }
+
+  // Theme tokens cannot be desaturated directly; use dim as a muted fallback.
+  return applyColor(ctx.theme, "dim", text);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Segment Implementations
 // ═══════════════════════════════════════════════════════════════════════════
@@ -62,9 +94,16 @@ const modelSegment: StatusLineSegment = {
     }
 
     const provider = ctx.model?.provider?.trim();
-    const modelLabel = provider ? `${modelName} (${provider})` : modelName;
+    const modelId = ctx.model?.id?.trim();
+    const modelKey = provider && modelId
+      ? `${provider}/${modelId}`
+      : modelId || provider;
 
-    let content = withIcon(icons.model, modelLabel);
+    let content = color(ctx, "model", withIcon(icons.model, modelName));
+
+    if (modelKey && modelKey !== modelName) {
+      content += colorMutedModelKey(ctx, ` (${modelKey})`);
+    }
 
     // Add thinking level with dot separator
     if (opts.showThinkingLevel !== false && ctx.model?.reasoning) {
@@ -72,12 +111,12 @@ const modelSegment: StatusLineSegment = {
       if (level !== "off") {
         const thinkingText = getThinkingText(level);
         if (thinkingText) {
-          content += `${SEP_DOT}${thinkingText}`;
+          content += color(ctx, "model", `${SEP_DOT}${thinkingText}`);
         }
       }
     }
 
-    return { content: color(ctx, "model", content), visible: true };
+    return { content, visible: true };
   },
 };
 
