@@ -122,7 +122,7 @@ export interface UsageStats {
 // Context passed to segment render functions
 export interface SegmentContext {
   // From pi-mono
-  model: { id: string; name?: string; reasoning?: boolean; contextWindow?: number } | undefined;
+  model: { id: string; name?: string; provider?: string; reasoning?: boolean; contextWindow?: number } | undefined;
   thinkingLevel: string;
   sessionId: string | undefined;
   
