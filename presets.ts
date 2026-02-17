@@ -68,6 +68,20 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     },
   },
 
+  // Like default, but without cache-read and cost segments.
+  focused: {
+    leftSegments: ["pi", "model", "thinking", "path", "git", "context_pct"],
+    rightSegments: [],
+    secondarySegments: ["extension_statuses"],
+    separator: "powerline-thin",
+    colors: DEFAULT_COLORS,
+    segmentOptions: {
+      model: { showThinkingLevel: false },
+      path: { mode: "basename" },
+      git: GIT_ALL,
+    },
+  },
+
   // Lowest-noise preset for narrow terminals.
   minimal: {
     leftSegments: ["path", "git"],

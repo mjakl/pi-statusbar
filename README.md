@@ -42,6 +42,7 @@ The status bar is enabled automatically.
 
 Available presets:
 - `default`
+- `focused`
 - `minimal`
 - `compact`
 - `full`
@@ -59,7 +60,7 @@ To customize the status line, edit the preset definitions in:
 Then restart pi.
 
 Recommended workflow:
-1. Pick the closest preset (`default`, `compact`, `minimal`, etc.)
+1. Pick the closest preset (`focused`, `default`, `compact`, `minimal`, etc.)
 2. Edit that preset in `presets.ts`
 3. Run `/powerline <preset-name>` to use it
 

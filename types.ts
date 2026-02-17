@@ -61,6 +61,7 @@ export type StatusLineSeparatorStyle =
 // Preset names
 export type StatusLinePreset =
   | "default"
+  | "focused"
   | "minimal"
   | "compact"
   | "full"
