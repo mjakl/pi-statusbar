@@ -1,4 +1,4 @@
-# pi-powerline-footer
+# pi-statusbar
 
 A focused [pi](https://github.com/badlogic/pi-mono) extension for configuring a powerline-style status bar.
 
@@ -6,7 +6,7 @@ A focused [pi](https://github.com/badlogic/pi-mono) extension for configuring a 
 
 This repository is a fork of:
 
-- https://github.com/nicobailon/pi-powerline-footer.git
+- https://github.com/nicobailon/pi-powerline-footer
 
 This fork intentionally keeps only the powerline status bar functionality and removes other features (welcome/splash UI, vibe/working-message replacement, and related extras).
 
@@ -21,13 +21,15 @@ This version is intentionally minimal:
 - no working-message replacement (`/vibe` removed)
 - no non-status-bar UI features
 
-## Installation
+## Installation (via git)
+
+Install directly from this fork:
 
 ```bash
-pi install npm:pi-powerline-footer
+pi install git:github.com/mjakl/pi-statusbar
 ```
 
-Restart pi to activate.
+After installation, restart pi to activate the extension.
 
 ## Usage
 
@@ -45,27 +47,72 @@ Available presets:
 - `full`
 - `nerd`
 - `ascii`
-- `custom`
 
-## What the status bar shows
+## Configure your own status line (by editing presets)
 
-Depending on preset, segments can include:
-- model
-- thinking level
-- path
-- git branch + file state
-- token usage / cache usage
-- cost / subscription indicator
-- context usage
-- time / elapsed time
-- session / hostname
-- extension statuses
+There is intentionally no JSON/settings-file layout config in this fork.
+
+To customize the status line, edit the preset definitions in:
+
+- `~/.pi/agent/extensions/pi-statusbar/presets.ts`
+
+Then restart pi.
+
+Recommended workflow:
+1. Pick the closest preset (`default`, `compact`, `minimal`, etc.)
+2. Edit that preset in `presets.ts`
+3. Run `/powerline <preset-name>` to use it
+
+What to edit in each preset:
+- `leftSegments`: segment order on the top row (left-to-right)
+- `rightSegments`: additional top-row segments appended after left segments
+- `secondarySegments`: overflow row shown below the editor when space allows
+- `separator`: separator style between segments
+- `segmentOptions`: per-segment behavior (path mode, git counters, time format, etc.)
+- `colors`: semantic color palette used by that preset
+
+Because presets are plain TypeScript objects, they are straightforward to adjust and version-control.
+
+## Segments and icons
+
+Icons adapt automatically based on Nerd Font support.
+
+- Nerd Font terminals get richer icons.
+- Fallback mode uses simpler Unicode/ASCII-friendly symbols.
+- You can force behavior with `POWERLINE_NERD_FONTS=1` (on) or `POWERLINE_NERD_FONTS=0` (off).
+
+| Segment ID | Meaning | Icon(s) used |
+|---|---|---|
+| `pi` | Pi marker segment | `pi` icon (`` / `π`) |
+| `model` | Active model name (optionally includes inline thinking tag) | `model` icon (`` / `◈`) |
+| `thinking` | Current thinking level (`think:off/min/low/med/high/xhigh`) | no icon (text-only) |
+| `path` | Current working directory (basename/abbreviated/full by preset) | `folder` icon (`` / `📁`) |
+| `git` | Branch and file-state counters (`*` unstaged, `+` staged, `?` untracked) | `branch` icon (`` / `⎇`), and `git` icon (`` / `⎇`) when branch text is hidden |
+| `token_in` | Total input tokens in session | `input` icon (`` / `in:`) |
+| `token_out` | Total output tokens in session | `output` icon (`` / `out:`) |
+| `token_total` | Combined token count (input + output + cache read/write) | `tokens` icon (`` / `⊛`) |
+| `cost` | Session cost or `(sub)` for subscription usage | no icon (text-only) |
+| `context_pct` | Context usage percentage + window (`xx.x%/N`), plus auto-compact marker when enabled | `context` icon (`` / `◫`) + `auto` icon (`󰁨` / `⚡`) |
+| `context_total` | Model context window size only | `context` icon (`` / `◫`) |
+| `time_spent` | Elapsed session time (`1m20s`, `2h5m`) | `time` icon (`` / `◷`) |
+| `time` | Current local time (`24h` or `12h`, optional seconds) | `time` icon (`` / `◷`) |
+| `session` | Short session id (first 8 chars) | `session` icon (`` / `id`) |
+| `hostname` | Machine hostname | `host` icon (`` / `host`) |
+| `cache_read` | Cache-read token count | `cache` + `input` icons (` ` / `cache in:`) |
+| `cache_write` | Cache-write token count | `cache` + `output` icons (` ` / `cache out:`) |
+| `extension_statuses` | Status strings reported by other loaded extensions | no fixed icon (passes extension text through) |
+
+Notes:
+- Thinking labels shown inside `model` (when enabled by preset) use dedicated labels/icons per level.
+- Segment visibility is data-driven (e.g. token/cost/cache segments hide when value is zero).
 
 ## Theme overrides
 
 You can override segment colors with:
 
-`~/.pi/agent/extensions/powerline-footer/theme.json`
+`~/.pi/agent/extensions/<your-extension-folder>/theme.json`
+
+(If installed from this repo via git, that folder is typically `pi-statusbar`.)
 
 Example:
 

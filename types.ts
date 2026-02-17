@@ -65,8 +65,7 @@ export type StatusLinePreset =
   | "compact"
   | "full"
   | "nerd"
-  | "ascii"
-  | "custom";
+  | "ascii";
 
 // Per-segment options
 export interface StatusLineSegmentOptions {
