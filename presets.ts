@@ -70,7 +70,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
 
   // Like default, but without cache-read and cost segments.
   focused: {
-    leftSegments: ["pi", "model", "thinking", "path", "git", "context_pct"],
+    leftSegments: ["pi", "path", "model", "thinking", "context_pct", "git"],
     rightSegments: [],
     secondarySegments: ["extension_statuses"],
     separator: "powerline-thin",
