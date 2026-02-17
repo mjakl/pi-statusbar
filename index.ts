@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
 
+import { saveStatusbarConfig, loadStatusbarConfig } from "./config.js";
 import { invalidateGitBranch, invalidateGitStatus } from "./git-status.js";
 import { computeResponsiveLayout, ResponsiveLayoutCache, type StatusLayout } from "./layout.js";
 import { PRESETS, getPreset } from "./presets.js";
@@ -32,10 +33,22 @@ interface PowerlineState {
   layoutCache: ResponsiveLayoutCache;
 }
 
+function isKnownPreset(value: string): value is StatusLinePreset {
+  return Object.prototype.hasOwnProperty.call(PRESETS, value);
+}
+
+function getInitialPreset(): StatusLinePreset {
+  const configuredPreset = loadStatusbarConfig().preset;
+  if (typeof configuredPreset === "string" && isKnownPreset(configuredPreset)) {
+    return configuredPreset;
+  }
+  return "default";
+}
+
 function createInitialState(): PowerlineState {
   return {
     enabled: true,
-    preset: "default",
+    preset: getInitialPreset(),
     sessionStartTime: Date.now(),
     runtimeContext: null,
     footerDataProvider: null,
@@ -43,10 +56,6 @@ function createInitialState(): PowerlineState {
     thinkingLevelGetter: null,
     layoutCache: new ResponsiveLayoutCache(),
   };
-}
-
-function isKnownPreset(value: string): value is StatusLinePreset {
-  return Object.prototype.hasOwnProperty.call(PRESETS, value);
 }
 
 function mightChangeGitBranch(command: string): boolean {
@@ -204,6 +213,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
 
       applyPreset(state, presetCandidate);
+      saveStatusbarConfig({ preset: presetCandidate });
+
       if (state.enabled) {
         installStatusBarUi(state, context);
       }

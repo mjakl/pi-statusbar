@@ -1,23 +1,25 @@
 /**
- * Theme system for powerline-footer
- * 
+ * Theme system for pi-statusbar
+ *
  * Colors are resolved in order:
- * 1. User overrides from theme.json (if exists)
- * 2. Preset colors
- * 3. Default colors
+ * 1. User overrides from ~/.pi/agent/extensions/pi-statusbar.json (theme)
+ * 2. Legacy overrides from extension-local theme.json (if present)
+ * 3. Preset colors
+ * 4. Default colors
  */
 
 import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { loadStatusbarConfig } from "./config.js";
 import type { ColorScheme, ColorValue, SemanticColor } from "./types.js";
 
-// Default color scheme (uses pi theme colors)
 const DEFAULT_COLORS: Required<ColorScheme> = {
   pi: "accent",
-  model: "#d787af",  // Pink/mauve (matching original colors.ts)
-  path: "#00afaf",  // Teal/cyan (matching original colors.ts)
+  model: "#d787af",
+  path: "#00afaf",
   git: "success",
   gitDirty: "warning",
   gitClean: "success",
@@ -32,77 +34,65 @@ const DEFAULT_COLORS: Required<ColorScheme> = {
   border: "borderMuted",
 };
 
-// Rainbow colors for high thinking levels
 const RAINBOW_COLORS = [
-  "#b281d6", "#d787af", "#febc38", "#e4c00f", 
+  "#b281d6", "#d787af", "#febc38", "#e4c00f",
   "#89d281", "#00afaf", "#178fb9", "#b281d6",
 ];
 
-// Cache for user theme overrides
 let userThemeCache: ColorScheme | null = null;
 let userThemeCacheTime = 0;
-const CACHE_TTL = 5000; // 5 seconds
+const CACHE_TTL_MS = 5000;
 
-/**
- * Get the path to the theme.json file
- */
-function getThemePath(): string {
+function getLegacyThemePath(): string {
   const extDir = dirname(fileURLToPath(import.meta.url));
   return join(extDir, "theme.json");
 }
 
-/**
- * Load user theme overrides from theme.json
- */
+function loadLegacyTheme(): ColorScheme {
+  const legacyThemePath = getLegacyThemePath();
+  try {
+    if (!existsSync(legacyThemePath)) {
+      return {};
+    }
+
+    const content = readFileSync(legacyThemePath, "utf-8");
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === "object") {
+      return (parsed.colors ?? parsed.theme ?? {}) as ColorScheme;
+    }
+  } catch {
+    // Ignore malformed legacy files
+  }
+
+  return {};
+}
+
 function loadUserTheme(): ColorScheme {
   const now = Date.now();
-  if (userThemeCache && now - userThemeCacheTime < CACHE_TTL) {
+  if (userThemeCache && now - userThemeCacheTime < CACHE_TTL_MS) {
     return userThemeCache;
   }
 
-  const themePath = getThemePath();
-  try {
-    if (existsSync(themePath)) {
-      const content = readFileSync(themePath, "utf-8");
-      const parsed = JSON.parse(content);
-      userThemeCache = parsed.colors ?? {};
-      userThemeCacheTime = now;
-      return userThemeCache;
-    }
-  } catch {
-    // Ignore errors, use defaults
-  }
-
-  userThemeCache = {};
+  const configTheme = loadStatusbarConfig().theme;
+  userThemeCache = configTheme ?? loadLegacyTheme();
   userThemeCacheTime = now;
   return userThemeCache;
 }
 
-/**
- * Resolve a semantic color to an actual color value
- */
 export function resolveColor(
   semantic: SemanticColor,
-  presetColors?: ColorScheme
+  presetColors?: ColorScheme,
 ): ColorValue {
   const userTheme = loadUserTheme();
-  
-  // Priority: user overrides > preset colors > defaults
-  return userTheme[semantic] 
-    ?? presetColors?.[semantic] 
+  return userTheme[semantic]
+    ?? presetColors?.[semantic]
     ?? DEFAULT_COLORS[semantic];
 }
 
-/**
- * Check if a color value is a hex color
- */
 function isHexColor(color: ColorValue): color is `#${string}` {
   return typeof color === "string" && color.startsWith("#");
 }
 
-/**
- * Convert hex color to ANSI escape code
- */
 function hexToAnsi(hex: string): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
@@ -111,36 +101,22 @@ function hexToAnsi(hex: string): string {
   return `\x1b[38;2;${r};${g};${b}m`;
 }
 
-/**
- * Apply a color to text using the pi theme or custom hex
- */
-export function applyColor(
-  theme: Theme,
-  color: ColorValue,
-  text: string
-): string {
+export function applyColor(theme: Theme, color: ColorValue, text: string): string {
   if (isHexColor(color)) {
     return `${hexToAnsi(color)}${text}\x1b[0m`;
   }
   return theme.fg(color as ThemeColor, text);
 }
 
-/**
- * Apply a semantic color to text
- */
 export function fg(
   theme: Theme,
   semantic: SemanticColor,
   text: string,
-  presetColors?: ColorScheme
+  presetColors?: ColorScheme,
 ): string {
-  const color = resolveColor(semantic, presetColors);
-  return applyColor(theme, color, text);
+  return applyColor(theme, resolveColor(semantic, presetColors), text);
 }
 
-/**
- * Apply rainbow gradient to text (for high thinking levels)
- */
 export function rainbow(text: string): string {
   let result = "";
   let colorIndex = 0;
@@ -155,16 +131,10 @@ export function rainbow(text: string): string {
   return result + "\x1b[0m";
 }
 
-/**
- * Get the default color scheme
- */
 export function getDefaultColors(): Required<ColorScheme> {
   return { ...DEFAULT_COLORS };
 }
 
-/**
- * Clear the user theme cache (for reloading)
- */
 export function clearThemeCache(): void {
   userThemeCache = null;
   userThemeCacheTime = 0;

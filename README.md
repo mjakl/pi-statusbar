@@ -49,11 +49,36 @@ Available presets:
 - `nerd`
 - `ascii`
 
+## Persistent config file
+
+This extension stores user config in:
+
+- `~/.pi/agent/extensions/pi-statusbar.json`
+
+Current structure:
+
+```json
+{
+  "preset": "focused",
+  "theme": {
+    "pi": "accent",
+    "model": "#d787af",
+    "path": "#00afaf",
+    "gitClean": "success",
+    "gitDirty": "warning"
+  }
+}
+```
+
+Notes:
+- When you run `/powerline <preset>`, the `preset` value is updated in this file automatically.
+- `theme` is a semantic color override map.
+
 ## Configure your own status line (by editing presets)
 
-There is intentionally no JSON/settings-file layout config in this fork.
+The JSON config selects a preset and theme, but layout structure (segment order/content) is intentionally defined in TypeScript presets.
 
-To customize the status line, edit the preset definitions in:
+To customize layout, edit:
 
 - `~/.pi/agent/extensions/pi-statusbar/presets.ts`
 
@@ -109,17 +134,18 @@ Notes:
 
 ## Theme overrides
 
-You can override segment colors with:
+Theme overrides are read from:
 
-`~/.pi/agent/extensions/<your-extension-folder>/theme.json`
+- `~/.pi/agent/extensions/pi-statusbar.json`
 
-(If installed from this repo via git, that folder is typically `pi-statusbar`.)
+inside the `theme` object.
 
 Example:
 
 ```json
 {
-  "colors": {
+  "preset": "focused",
+  "theme": {
     "pi": "accent",
     "model": "#d787af",
     "path": "#00afaf",
@@ -132,5 +158,3 @@ Example:
 Supported values:
 - pi theme color names (`accent`, `primary`, `muted`, `dim`, `text`, `success`, `warning`, `error`, `borderMuted`)
 - hex colors (`#rrggbb`)
-
-See `theme.example.json` for a fuller example.

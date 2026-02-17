@@ -1,5 +1,6 @@
 {
-  "colors": {
+  "preset": "focused",
+  "theme": {
     "pi": "accent",
     "model": "primary",
     "path": "muted",
