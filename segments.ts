@@ -195,16 +195,6 @@ const thinkingSegment: StatusLineSegment = {
   },
 };
 
-const subagentsSegment: StatusLineSegment = {
-  id: "subagents",
-  render(_ctx) {
-    // Note: pi-mono doesn't have subagent tracking built-in
-    // This would require extension state management
-    // For now, return not visible
-    return { content: "", visible: false };
-  },
-};
-
 const tokenInSegment: StatusLineSegment = {
   id: "token_in",
   render(ctx) {
@@ -389,12 +379,13 @@ const extensionStatusesSegment: StatusLineSegment = {
     const statuses = ctx.extensionStatuses;
     if (!statuses || statuses.size === 0) return { content: "", visible: false };
 
-    // Join compact statuses with a separator
-    // Notification-style statuses (starting with "[") are shown above the editor instead
+    // Join all extension statuses with a separator.
+    // Statuses already include any per-extension formatting.
     const parts: string[] = [];
     for (const value of statuses.values()) {
-      if (value && !value.trimStart().startsWith('[')) {
-        parts.push(value);
+      const text = value?.trim();
+      if (text) {
+        parts.push(text);
       }
     }
 
@@ -416,7 +407,6 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
   path: pathSegment,
   git: gitSegment,
   thinking: thinkingSegment,
-  subagents: subagentsSegment,
   token_in: tokenInSegment,
   token_out: tokenOutSegment,
   token_total: tokenTotalSegment,

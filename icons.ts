@@ -6,16 +6,13 @@ export interface IconSet {
   git: string;
   tokens: string;
   context: string;
-  cost: string;
   time: string;
-  agents: string;
   cache: string;
   input: string;
   output: string;
   host: string;
   session: string;
   auto: string;
-  warning: string;
 }
 
 // Separator characters
@@ -56,16 +53,13 @@ export const NERD_ICONS: IconSet = {
   git: "\uF1D3",        // nf-fa-git (git logo)
   tokens: "\uE26B",     // nf-seti-html (tokens symbol)
   context: "\uE70F",    // nf-dev-database (database)
-  cost: "\uF155",       // nf-fa-dollar
   time: "\uF017",       // nf-fa-clock_o
-  agents: "\uF0C0",     // nf-fa-users
   cache: "\uF1C0",      // nf-fa-database (cache)
   input: "\uF090",      // nf-fa-sign_in (input arrow)
   output: "\uF08B",     // nf-fa-sign_out (output arrow)
   host: "\uF109",       // nf-fa-laptop (host)
   session: "\uF550",    // nf-md-identifier (session id)
   auto: "\u{F0068}",    // nf-md-lightning_bolt (auto-compact)
-  warning: "\uF071",    // nf-fa-warning
 };
 
 // ASCII/Unicode fallback icons (matching oh-my-pi)
@@ -77,16 +71,13 @@ export const ASCII_ICONS: IconSet = {
   git: "⎇",
   tokens: "⊛",
   context: "◫",
-  cost: "$",
   time: "◷",
-  agents: "AG",
   cache: "cache",
   input: "in:",
   output: "out:",
   host: "host",
   session: "id",
   auto: "⚡",
-  warning: "⚠",
 };
 
 // Separator characters
