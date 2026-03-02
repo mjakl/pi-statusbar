@@ -85,6 +85,12 @@ export interface ToolResultEventLike {
   };
 }
 
+export interface ModelSelectEventLike {
+  model: ModelLike;
+  previousModel?: ModelLike;
+  source: string;
+}
+
 export interface UserBashEventLike {
   command: string;
 }

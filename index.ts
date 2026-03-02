@@ -9,6 +9,7 @@ import type {
   ToolResultEventLike,
   TuiLike,
   UserBashEventLike,
+  ModelSelectEventLike,
 } from "./runtime-types.js";
 import { buildSegmentContext } from "./segment-context.js";
 import { clearStatusBarUi, setupStatusBarUi } from "./status-bar-ui.js";
@@ -190,6 +191,26 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
 
     invalidateGitAndRender(state, BRANCH_RERENDER_DELAYS_MS);
+  });
+
+  pi.on("model_select", async (rawEvent, rawContext) => {
+    const event = rawEvent as ModelSelectEventLike;
+    const context = rawContext as RuntimeContextLike;
+
+    if (event.model && context) {
+      context.model = event.model;
+    }
+    
+    state.runtimeContext = context;
+    state.layoutCache.invalidate();
+    
+    state.tui?.requestRender();
+    requestRenderWithDelays(state.tui, FAST_BRANCH_RERENDER_DELAYS_MS);
+  });
+
+  pi.on("message_end", async () => {
+    state.layoutCache.invalidate();
+    requestRenderWithDelays(state.tui, FAST_BRANCH_RERENDER_DELAYS_MS);
   });
 
   pi.registerCommand("powerline", {
