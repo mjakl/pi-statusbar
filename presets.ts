@@ -56,7 +56,7 @@ const GIT_NO_UNTRACKED: NonNullable<StatusLineSegmentOptions["git"]> = {
 export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   // Balanced default: practical signal with one compact overflow line.
   default: {
-    leftSegments: ["pi", "model", "thinking", "path", "git", "context_pct", "cache_read", "cost"],
+    leftSegments: ["pi", "model_name", "thinking", "path", "git", "context_pct", "cache_read", "cost"],
     rightSegments: [],
     secondarySegments: ["extension_statuses"],
     separator: "powerline-thin",
@@ -70,7 +70,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
 
   // Like default, but without cache-read and cost segments.
   focused: {
-    leftSegments: ["pi", "path", "model", "thinking", "context_pct", "git"],
+    leftSegments: ["pi", "path", "model_key", "thinking", "context_pct", "git"],
     rightSegments: [],
     secondarySegments: ["extension_statuses"],
     separator: "powerline-thin",

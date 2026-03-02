@@ -28,6 +28,8 @@ export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
 export type StatusLineSegmentId =
   | "pi"
   | "model"
+  | "model_key"
+  | "model_name"
   | "path"
   | "git"
   | "token_in"

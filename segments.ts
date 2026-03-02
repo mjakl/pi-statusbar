@@ -120,6 +120,64 @@ const modelSegment: StatusLineSegment = {
   },
 };
 
+const modelKeySegment: StatusLineSegment = {
+  id: "model_key",
+  render(ctx) {
+    const icons = getIcons();
+    const opts = ctx.options.model ?? {};
+
+    const provider = ctx.model?.provider?.trim();
+    const modelId = ctx.model?.id?.trim();
+    const modelKey = provider && modelId
+      ? `${provider}/${modelId}`
+      : modelId || provider || "no-model";
+
+    let content = color(ctx, "model", withIcon(icons.model, modelKey));
+
+    // Add thinking level with dot separator
+    if (opts.showThinkingLevel !== false && ctx.model?.reasoning) {
+      const level = ctx.thinkingLevel || "off";
+      if (level !== "off") {
+        const thinkingText = getThinkingText(level);
+        if (thinkingText) {
+          content += color(ctx, "model", `${SEP_DOT}${thinkingText}`);
+        }
+      }
+    }
+
+    return { content, visible: true };
+  },
+};
+
+const modelNameSegment: StatusLineSegment = {
+  id: "model_name",
+  render(ctx) {
+    const icons = getIcons();
+    const opts = ctx.options.model ?? {};
+
+    let modelName = ctx.model?.name || ctx.model?.id || "no-model";
+    // Strip "Claude " prefix for brevity
+    if (modelName.startsWith("Claude ")) {
+      modelName = modelName.slice(7);
+    }
+
+    let content = color(ctx, "model", withIcon(icons.model, modelName));
+
+    // Add thinking level with dot separator
+    if (opts.showThinkingLevel !== false && ctx.model?.reasoning) {
+      const level = ctx.thinkingLevel || "off";
+      if (level !== "off") {
+        const thinkingText = getThinkingText(level);
+        if (thinkingText) {
+          content += color(ctx, "model", `${SEP_DOT}${thinkingText}`);
+        }
+      }
+    }
+
+    return { content, visible: true };
+  },
+};
+
 const pathSegment: StatusLineSegment = {
   id: "path",
   render(ctx) {
@@ -446,6 +504,8 @@ const extensionStatusesSegment: StatusLineSegment = {
 export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
   pi: piSegment,
   model: modelSegment,
+  model_key: modelKeySegment,
+  model_name: modelNameSegment,
   path: pathSegment,
   git: gitSegment,
   thinking: thinkingSegment,
