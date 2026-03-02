@@ -3,7 +3,7 @@ import type { ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-
 
 import { getGitStatus } from "./git-status.js";
 import { getPreset } from "./presets.js";
-import type { RuntimeContextLike, SessionEventLike } from "./runtime-types.js";
+import type { ModelLike, RuntimeContextLike, SessionEventLike } from "./runtime-types.js";
 import { getDefaultColors } from "./theme.js";
 import type { ColorScheme, SegmentContext, UsageStats } from "./types.js";
 
@@ -22,6 +22,7 @@ type AssistantMessageLike = Partial<AssistantMessage> & {
 
 export interface SegmentContextInput {
   runtimeContext: RuntimeContextLike;
+  modelOverride?: ModelLike;
   presetName: Parameters<typeof getPreset>[0];
   sessionStartTime: number;
   footerData: ReadonlyFooterDataProvider | null;
@@ -105,6 +106,7 @@ function computeContextPercent(lastAssistant: AssistantMessageLike | null, conte
 export function buildSegmentContext(input: SegmentContextInput): SegmentContext {
   const {
     runtimeContext,
+    modelOverride,
     presetName,
     sessionStartTime,
     footerData,
@@ -118,18 +120,20 @@ export function buildSegmentContext(input: SegmentContextInput): SegmentContext 
   const sessionEvents = runtimeContext.sessionManager?.getBranch?.() ?? [];
   const usageSnapshot = collectUsageSnapshot(sessionEvents);
 
-  const contextWindow = runtimeContext.model?.contextWindow ?? 0;
+  const activeModel = modelOverride ?? runtimeContext.model;
+
+  const contextWindow = activeModel?.contextWindow ?? 0;
   const contextPercent = computeContextPercent(usageSnapshot.lastAssistant, contextWindow);
 
   const gitBranch = footerData?.getGitBranch() ?? null;
   const gitStatus = getGitStatus(gitBranch);
 
-  const usingSubscription = runtimeContext.model
-    ? runtimeContext.modelRegistry?.isUsingOAuth?.(runtimeContext.model) ?? false
+  const usingSubscription = activeModel
+    ? runtimeContext.modelRegistry?.isUsingOAuth?.(activeModel) ?? false
     : false;
 
   return {
-    model: runtimeContext.model,
+    model: activeModel,
     thinkingLevel: usageSnapshot.thinkingLevel || fallbackThinkingLevel || "off",
     sessionId: runtimeContext.sessionManager?.getSessionId?.(),
     usageStats: usageSnapshot.usageStats,

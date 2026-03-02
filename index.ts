@@ -5,11 +5,12 @@ import { invalidateGitBranch, invalidateGitStatus } from "./git-status.js";
 import { computeResponsiveLayout, ResponsiveLayoutCache, type StatusLayout } from "./layout.js";
 import { PRESETS, getPreset } from "./presets.js";
 import type {
+  ModelLike,
+  ModelSelectEventLike,
   RuntimeContextLike,
   ToolResultEventLike,
   TuiLike,
   UserBashEventLike,
-  ModelSelectEventLike,
 } from "./runtime-types.js";
 import { buildSegmentContext } from "./segment-context.js";
 import { clearStatusBarUi, setupStatusBarUi } from "./status-bar-ui.js";
@@ -28,6 +29,7 @@ interface PowerlineState {
   preset: StatusLinePreset;
   sessionStartTime: number;
   runtimeContext: RuntimeContextLike | null;
+  activeModel: ModelLike | undefined;
   footerDataProvider: ReadonlyFooterDataProvider | null;
   tui: TuiLike | null;
   thinkingLevelGetter: (() => string) | null;
@@ -52,6 +54,7 @@ function createInitialState(): PowerlineState {
     preset: getInitialPreset(),
     sessionStartTime: Date.now(),
     runtimeContext: null,
+    activeModel: undefined,
     footerDataProvider: null,
     tui: null,
     thinkingLevelGetter: null,
@@ -88,6 +91,7 @@ function getLayout(state: PowerlineState, width: number, theme: Theme): StatusLa
   return state.layoutCache.get(width, () => {
     const segmentContext = buildSegmentContext({
       runtimeContext: context,
+      modelOverride: state.activeModel,
       presetName: state.preset,
       sessionStartTime: state.sessionStartTime,
       footerData: state.footerDataProvider,
@@ -150,6 +154,7 @@ function toggleStatusBar(state: PowerlineState, context: RuntimeContextLike): vo
 
 function setRuntimeContext(state: PowerlineState, context: RuntimeContextLike): void {
   state.runtimeContext = context;
+  state.activeModel = context.model;
   state.sessionStartTime = Date.now();
   state.layoutCache.invalidate();
   state.thinkingLevelGetter = typeof context.getThinkingLevel === "function"
@@ -197,13 +202,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const event = rawEvent as ModelSelectEventLike;
     const context = rawContext as RuntimeContextLike;
 
-    if (event.model && context) {
-      context.model = event.model;
-    }
-    
     state.runtimeContext = context;
+    state.activeModel = event.model;
     state.layoutCache.invalidate();
-    
+
     state.tui?.requestRender();
     requestRenderWithDelays(state.tui, FAST_BRANCH_RERENDER_DELAYS_MS);
   });
@@ -218,6 +220,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     handler: async (args, rawContext) => {
       const context = rawContext as RuntimeContextLike;
       state.runtimeContext = context;
+      state.activeModel = context.model;
 
       if (!args?.trim()) {
         toggleStatusBar(state, context);
