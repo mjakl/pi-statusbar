@@ -120,7 +120,7 @@ Icons adapt automatically based on Nerd Font support.
 | `token_out` | Total output tokens in session | `output` icon (`` / `out:`) |
 | `token_total` | Combined token count (input + output + cache read/write) | `tokens` icon (`` / `⊛`) |
 | `cost` | Session cost or `(sub)` for subscription usage | no icon (text-only) |
-| `context_pct` | Context usage percentage + window (`xx.x%/N`), plus auto-compact marker when enabled | `context` icon (`` / `◫`) + `auto` icon (`󰁨` / `⚡`) |
+| `context_pct` | Context usage percentage + window (`xx.x%/N`), plus auto-compact marker when enabled | Dynamic battery icon: `<20%` `󰂄` / `⚡`, `20-80%` `󱊢` / `◫`, `>80%` `󰂃` / `!` + `auto` icon (`󰁨` / `⚡`) |
 | `context_total` | Model context window size only | `context` icon (`` / `◫`) |
 | `time_spent` | Elapsed session time (`1m20s`, `2h5m`) | `time` icon (`` / `◷`) |
 | `time` | Current local time (`24h` or `12h`, optional seconds) | `time` icon (`` / `◷`) |

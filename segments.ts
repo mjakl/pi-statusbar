@@ -357,14 +357,20 @@ const contextPctSegment: StatusLineSegment = {
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
     const text = `${pct.toFixed(1)}%/${formatTokens(window)}${autoIcon}`;
 
+    const contextIcon = pct < 20
+      ? icons.contextLow
+      : pct <= 80
+        ? icons.contextMedium
+        : icons.contextHigh;
+
     // Icon outside color, text inside - use semantic colors for thresholds
     let content: string;
     if (pct > 90) {
-      content = withIcon(icons.context, color(ctx, "contextError", text));
+      content = withIcon(contextIcon, color(ctx, "contextError", text));
     } else if (pct > 70) {
-      content = withIcon(icons.context, color(ctx, "contextWarn", text));
+      content = withIcon(contextIcon, color(ctx, "contextWarn", text));
     } else {
-      content = withIcon(icons.context, color(ctx, "context", text));
+      content = withIcon(contextIcon, color(ctx, "context", text));
     }
 
     return { content, visible: true };

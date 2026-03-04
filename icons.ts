@@ -6,6 +6,9 @@ export interface IconSet {
   git: string;
   tokens: string;
   context: string;
+  contextLow: string;
+  contextMedium: string;
+  contextHigh: string;
   time: string;
   cache: string;
   input: string;
@@ -52,7 +55,10 @@ export const NERD_ICONS: IconSet = {
   branch: "\uF126",     // nf-fa-code_fork (git branch)
   git: "\uF1D3",        // nf-fa-git (git logo)
   tokens: "\uE26B",     // nf-seti-html (tokens symbol)
-  context: "\uE70F",    // nf-dev-database (database)
+  context: "\uE70F",    // nf-dev-database (context total)
+  contextLow: "\u{F0084}",    // nf-md-battery_charging (<20%)
+  contextMedium: "\u{F12A2}", // nf-md-battery_medium (20-80%)
+  contextHigh: "\u{F0083}",   // nf-md-battery_alert (>80%)
   time: "\uF017",       // nf-fa-clock_o
   cache: "\uF1C0",      // nf-fa-database (cache)
   input: "\uF090",      // nf-fa-sign_in (input arrow)
@@ -71,6 +77,9 @@ export const ASCII_ICONS: IconSet = {
   git: "⎇",
   tokens: "⊛",
   context: "◫",
+  contextLow: "⚡",
+  contextMedium: "◫",
+  contextHigh: "!",
   time: "◷",
   cache: "cache",
   input: "in:",
