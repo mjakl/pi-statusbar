@@ -68,11 +68,18 @@ export interface ModelRegistryLike {
   isUsingOAuth?(model: ModelLike): boolean;
 }
 
+export interface ContextUsageLike {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+}
+
 export interface RuntimeContextLike {
   hasUI: boolean;
   ui: UiLike;
   model?: ModelLike;
   getThinkingLevel?(): string;
+  getContextUsage?(): ContextUsageLike | undefined;
   sessionManager?: SessionManagerLike;
   settingsManager?: SettingsManagerLike;
   modelRegistry?: ModelRegistryLike;

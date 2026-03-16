@@ -130,7 +130,7 @@ export interface SegmentContext {
   
   // Computed
   usageStats: UsageStats;
-  contextPercent: number;
+  contextPercent: number | null;
   contextWindow: number;
   autoCompactEnabled: boolean;
   usingSubscription: boolean;

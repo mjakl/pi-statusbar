@@ -152,14 +152,28 @@ function toggleStatusBar(state: PowerlineState, context: RuntimeContextLike): vo
   }
 }
 
-function setRuntimeContext(state: PowerlineState, context: RuntimeContextLike): void {
+function updateRuntimeContext(state: PowerlineState, context: RuntimeContextLike): void {
   state.runtimeContext = context;
   state.activeModel = context.model;
-  state.sessionStartTime = Date.now();
-  state.layoutCache.invalidate();
   state.thinkingLevelGetter = typeof context.getThinkingLevel === "function"
     ? () => context.getThinkingLevel?.() ?? "off"
     : null;
+}
+
+function setRuntimeContext(state: PowerlineState, context: RuntimeContextLike): void {
+  updateRuntimeContext(state, context);
+  state.sessionStartTime = Date.now();
+  state.layoutCache.invalidate();
+}
+
+function refreshStatusBar(state: PowerlineState, context?: RuntimeContextLike): void {
+  if (context) {
+    updateRuntimeContext(state, context);
+  }
+
+  state.layoutCache.invalidate();
+  state.tui?.requestRender();
+  requestRenderWithDelays(state.tui, FAST_BRANCH_RERENDER_DELAYS_MS);
 }
 
 export default function powerlineFooter(pi: ExtensionAPI) {
@@ -202,17 +216,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const event = rawEvent as ModelSelectEventLike;
     const context = rawContext as RuntimeContextLike;
 
-    state.runtimeContext = context;
+    updateRuntimeContext(state, context);
     state.activeModel = event.model;
-    state.layoutCache.invalidate();
+    refreshStatusBar(state);
+  });
 
-    state.tui?.requestRender();
-    requestRenderWithDelays(state.tui, FAST_BRANCH_RERENDER_DELAYS_MS);
+  pi.on("session_compact", async (_rawEvent, rawContext) => {
+    const context = rawContext as RuntimeContextLike;
+    refreshStatusBar(state, context);
   });
 
   pi.on("message_end", async () => {
-    state.layoutCache.invalidate();
-    requestRenderWithDelays(state.tui, FAST_BRANCH_RERENDER_DELAYS_MS);
+    refreshStatusBar(state);
   });
 
   pi.registerCommand("powerline", {

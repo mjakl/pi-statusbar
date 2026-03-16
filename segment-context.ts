@@ -92,7 +92,7 @@ function collectUsageSnapshot(sessionEvents: SessionEventLike[]): UsageSnapshot 
   };
 }
 
-function computeContextPercent(lastAssistant: AssistantMessageLike | null, contextWindow: number): number {
+function computeContextPercent(lastAssistant: AssistantMessageLike | null, contextWindow: number): number | null {
   if (!lastAssistant || contextWindow <= 0) {
     return 0;
   }
@@ -101,6 +101,28 @@ function computeContextPercent(lastAssistant: AssistantMessageLike | null, conte
   const totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 
   return (totalTokens / contextWindow) * 100;
+}
+
+function getContextStats(
+  runtimeContext: RuntimeContextLike,
+  activeModel: ModelLike | undefined,
+  lastAssistant: AssistantMessageLike | null,
+): { contextWindow: number; contextPercent: number | null } {
+  const contextUsage = runtimeContext.getContextUsage?.();
+  if (contextUsage) {
+    return {
+      contextWindow: contextUsage.contextWindow || (activeModel?.contextWindow ?? 0),
+      contextPercent: typeof contextUsage.percent === "number" && Number.isFinite(contextUsage.percent)
+        ? contextUsage.percent
+        : null,
+    };
+  }
+
+  const contextWindow = activeModel?.contextWindow ?? 0;
+  return {
+    contextWindow,
+    contextPercent: computeContextPercent(lastAssistant, contextWindow),
+  };
 }
 
 export function buildSegmentContext(input: SegmentContextInput): SegmentContext {
@@ -122,8 +144,11 @@ export function buildSegmentContext(input: SegmentContextInput): SegmentContext 
 
   const activeModel = modelOverride ?? runtimeContext.model;
 
-  const contextWindow = activeModel?.contextWindow ?? 0;
-  const contextPercent = computeContextPercent(usageSnapshot.lastAssistant, contextWindow);
+  const { contextWindow, contextPercent } = getContextStats(
+    runtimeContext,
+    activeModel,
+    usageSnapshot.lastAssistant,
+  );
 
   const gitBranch = footerData?.getGitBranch() ?? null;
   const gitStatus = getGitStatus(gitBranch);

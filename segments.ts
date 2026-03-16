@@ -353,10 +353,18 @@ const contextPctSegment: StatusLineSegment = {
     const icons = getIcons();
     const pct = ctx.contextPercent;
     const window = ctx.contextWindow;
+    if (!window) return { content: "", visible: false };
 
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
-    const text = `${pct.toFixed(1)}%/${formatTokens(window)}${autoIcon}`;
+    if (pct === null) {
+      const text = `?/${formatTokens(window)}${autoIcon}`;
+      return {
+        content: withIcon(icons.contextMedium || icons.context, color(ctx, "context", text)),
+        visible: true,
+      };
+    }
 
+    const text = `${pct.toFixed(1)}%/${formatTokens(window)}${autoIcon}`;
     const contextIcon = pct < 20
       ? icons.contextLow
       : pct <= 80
