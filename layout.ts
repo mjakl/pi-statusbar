@@ -1,4 +1,4 @@
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 
 import { ansi, getFgAnsiCode } from "./colors.js";
 import { renderSegment } from "./segments.js";

@@ -1,4 +1,4 @@
-import { CustomEditor, type ReadonlyFooterDataProvider, type Theme } from "@mariozechner/pi-coding-agent";
+import { CustomEditor, type ReadonlyFooterDataProvider, type Theme } from "@earendil-works/pi-coding-agent";
 
 import { ansi, getFgAnsiCode } from "./colors.js";
 import type {

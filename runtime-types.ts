@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@mariozechner/pi-ai";
-import type { ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { ReadonlyFooterDataProvider, Theme } from "@earendil-works/pi-coding-agent";
 
 export type NotificationLevel = "info" | "warning" | "error";
 

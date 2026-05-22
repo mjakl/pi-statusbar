@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ReadonlyFooterDataProvider, Theme } from "@earendil-works/pi-coding-agent";
 
 import { saveStatusbarConfig, loadStatusbarConfig } from "./config.js";
 import { invalidateGitBranch, invalidateGitStatus } from "./git-status.js";
