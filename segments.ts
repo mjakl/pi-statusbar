@@ -2,6 +2,7 @@ import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
 import type { RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
 import { fg, rainbow, applyColor, resolveColor } from "./theme.js";
+import { ansi, getFgAnsiCode } from "./colors.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
 
 // Helper to apply semantic color from context
@@ -65,6 +66,14 @@ function colorMutedModelKey(ctx: SegmentContext, text: string): string {
 
   // Theme tokens cannot be desaturated directly; use dim as a muted fallback.
   return applyColor(ctx.theme, "dim", text);
+}
+
+function stripAnsi(input: string): string {
+  return input.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function colorAsSeparator(text: string): string {
+  return `${getFgAnsiCode("sep")}${text}${ansi.reset}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -493,11 +502,12 @@ const extensionStatusesSegment: StatusLineSegment = {
     const statuses = ctx.extensionStatuses;
     if (!statuses || statuses.size === 0) return { content: "", visible: false };
 
-    // Join all extension statuses with a separator.
-    // Statuses already include any per-extension formatting.
+    // Recolor extension statuses to match the statusbar separator. Extension
+    // statuses are often bright because they are authored for the default footer;
+    // stripping ANSI here keeps them visible but visually secondary.
     const parts: string[] = [];
     for (const value of statuses.values()) {
-      const text = value?.trim();
+      const text = stripAnsi(value ?? "").trim();
       if (text) {
         parts.push(text);
       }
@@ -505,8 +515,7 @@ const extensionStatusesSegment: StatusLineSegment = {
 
     if (parts.length === 0) return { content: "", visible: false };
 
-    // Statuses already have their own styling applied by the extensions
-    const content = parts.join(` ${SEP_DOT} `);
+    const content = colorAsSeparator(parts.join(` ${SEP_DOT} `));
     return { content, visible: true };
   },
 };

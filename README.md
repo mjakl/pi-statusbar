@@ -128,7 +128,7 @@ Icons adapt automatically based on Nerd Font support.
 | `hostname` | Machine hostname | `host` icon (`` / `host`) |
 | `cache_read` | Cache-read token count | `cache` + `input` icons (` ` / `cache in:`) |
 | `cache_write` | Cache-write token count | `cache` + `output` icons (` ` / `cache out:`) |
-| `extension_statuses` | Status strings reported by other loaded extensions | no fixed icon (passes extension text through) |
+| `extension_statuses` | Status strings reported by other loaded extensions, recolored to the muted separator tone | no fixed icon |
 
 Notes:
 - Thinking labels shown inside `model` (when enabled by preset) use dedicated labels/icons per level.

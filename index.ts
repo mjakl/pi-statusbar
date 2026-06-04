@@ -82,13 +82,26 @@ function invalidateGitAndRender(state: PowerlineState, delays: readonly number[]
   requestRenderWithDelays(state.tui, delays);
 }
 
+function getFooterDataCacheKey(provider: ReadonlyFooterDataProvider | null): string {
+  if (!provider) {
+    return "footer:none";
+  }
+
+  return JSON.stringify({
+    branch: provider.getGitBranch(),
+    statuses: Array.from(provider.getExtensionStatuses().entries()),
+  });
+}
+
 function getLayout(state: PowerlineState, width: number, theme: Theme): StatusLayout {
   const context = state.runtimeContext;
   if (!context) {
     return { topContent: "", secondaryContent: "" };
   }
 
-  return state.layoutCache.get(width, () => {
+  const footerDataCacheKey = getFooterDataCacheKey(state.footerDataProvider);
+
+  return state.layoutCache.get(width, footerDataCacheKey, () => {
     const segmentContext = buildSegmentContext({
       runtimeContext: context,
       modelOverride: state.activeModel,
@@ -113,6 +126,8 @@ function installStatusBarUi(state: PowerlineState, context: RuntimeContextLike):
     getLayout: (width, theme) => getLayout(state, width, theme),
     onFooterDataProviderChanged: (provider) => {
       state.footerDataProvider = provider;
+      state.layoutCache.invalidate();
+      state.tui?.requestRender();
     },
     onTuiChanged: (tui) => {
       state.tui = tui;

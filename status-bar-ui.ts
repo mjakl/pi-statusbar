@@ -158,8 +158,8 @@ export function setupStatusBarUi(params: SetupStatusBarUiParams): void {
   context.ui.setEditorComponent(editorFactory);
 
   context.ui.setFooter((tui, _theme, footerData) => {
-    onFooterDataProviderChanged(footerData);
     onTuiChanged(tui);
+    onFooterDataProviderChanged(footerData);
 
     const unsubscribe = footerData.onBranchChange(() => tui.requestRender());
     return createEmptyFooterComponent(() => {

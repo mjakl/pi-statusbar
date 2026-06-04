@@ -131,19 +131,22 @@ export function computeResponsiveLayout(
 
 export class ResponsiveLayoutCache {
   private width = 0;
+  private cacheKey = "";
   private updatedAt = 0;
   private layout: StatusLayout | null = null;
 
   invalidate(): void {
     this.layout = null;
+    this.cacheKey = "";
     this.updatedAt = 0;
   }
 
-  get(width: number, build: () => StatusLayout): StatusLayout {
+  get(width: number, cacheKey: string, build: () => StatusLayout): StatusLayout {
     const now = Date.now();
     const isFresh =
       this.layout !== null &&
       this.width === width &&
+      this.cacheKey === cacheKey &&
       now - this.updatedAt < LAYOUT_CACHE_TTL_MS;
 
     if (isFresh) {
@@ -151,6 +154,7 @@ export class ResponsiveLayoutCache {
     }
 
     this.width = width;
+    this.cacheKey = cacheKey;
     this.layout = build();
     this.updatedAt = now;
     return this.layout;
