@@ -24,8 +24,7 @@ interface SetupStatusBarUiParams {
 
 function createBorderLine(width: number): string {
   const borderColor = getFgAnsiCode("sep");
-  const border = `${borderColor}${HORIZONTAL_BORDER.repeat(width - 2)}${ansi.reset}`;
-  return ` ${border}`;
+  return `${borderColor}${HORIZONTAL_BORDER.repeat(width)}${ansi.reset}`;
 }
 
 function stripAnsi(input: string): string {
@@ -73,8 +72,6 @@ function decorateEditorLines(
   if (bottomBorderIndex === 1) {
     result.push("");
   }
-
-  result.push(createBorderLine(width));
 
   for (let i = bottomBorderIndex + 1; i < originalLines.length; i++) {
     result.push(originalLines[i] || "");
