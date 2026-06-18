@@ -140,7 +140,7 @@ Preset fields:
 
 - `leftSegments` — segment order on the top row, left to right.
 - `rightSegments` — additional top-row segments appended after left segments.
-- `secondarySegments` — overflow row shown below the editor when space allows.
+- `secondarySegments` — overflow row shown as a second status-bar line above the editor when space allows.
 - `separator` — separator style between segments.
 - `segmentOptions` — per-segment behavior such as path mode, git counters, and time format.
 - `colors` — semantic color palette used by that preset.

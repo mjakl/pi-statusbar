@@ -7,7 +7,6 @@ import type {
   RuntimeContextLike,
   TuiLike,
   UiLike,
-  WidgetComponentLike,
 } from "./runtime-types.js";
 import type { StatusLayout } from "./layout.js";
 
@@ -51,7 +50,7 @@ function findBottomBorderIndex(lines: string[]): number {
 function decorateEditorLines(
   width: number,
   originalLines: string[],
-  statusLine: string,
+  statusLines: string[],
 ): string[] {
   if (originalLines.length === 0) {
     return originalLines;
@@ -60,7 +59,11 @@ function decorateEditorLines(
   const result: string[] = [];
   const bottomBorderIndex = findBottomBorderIndex(originalLines);
 
-  result.push(statusLine);
+  for (const statusLine of statusLines) {
+    if (statusLine) {
+      result.push(statusLine);
+    }
+  }
   result.push(createBorderLine(width));
 
   for (let i = 1; i < bottomBorderIndex; i++) {
@@ -86,20 +89,6 @@ function createEmptyFooterComponent(dispose: () => void): FooterComponentLike {
     invalidate() {},
     render(): string[] {
       return [];
-    },
-  };
-}
-
-function createSecondaryWidget(
-  getLayout: (width: number, theme: Theme) => StatusLayout,
-  theme: Theme,
-): WidgetComponentLike {
-  return {
-    dispose() {},
-    invalidate() {},
-    render(width: number): string[] {
-      const layout = getLayout(width, theme);
-      return layout.secondaryContent ? [layout.secondaryContent] : [];
     },
   };
 }
@@ -141,7 +130,7 @@ export function setupStatusBarUi(params: SetupStatusBarUiParams): void {
       const lines = originalRender(width);
       const layout = getLayout(width, context.ui.theme);
 
-      return decorateEditorLines(width, lines, layout.topContent);
+      return decorateEditorLines(width, lines, [layout.topContent, layout.secondaryContent]);
     };
 
     return editor;
@@ -161,9 +150,5 @@ export function setupStatusBarUi(params: SetupStatusBarUiParams): void {
     });
   });
 
-  context.ui.setWidget(
-    SECONDARY_WIDGET_ID,
-    (_tui, theme) => createSecondaryWidget(getLayout, theme),
-    { placement: "belowEditor" },
-  );
+  context.ui.setWidget(SECONDARY_WIDGET_ID, undefined);
 }
