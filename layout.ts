@@ -16,7 +16,7 @@ interface MeasuredSegment {
 }
 
 const LAYOUT_CACHE_TTL_MS = 50;
-const LAYOUT_BASE_OVERHEAD = 2; // leading + trailing spaces
+const LAYOUT_BASE_OVERHEAD = 0;
 
 function renderSegmentWithWidth(
   segmentId: StatusLineSegmentId,
@@ -48,7 +48,7 @@ function buildContentFromParts(parts: string[], separatorStyle: StatusLineSepara
   const separator = separatorDef.left;
   const separatorAnsi = getFgAnsiCode("sep");
 
-  return ` ${parts.join(` ${separatorAnsi}${separator}${ansi.reset} `)}${ansi.reset} `;
+  return `${parts.join(` ${separatorAnsi}${separator}${ansi.reset} `)}${ansi.reset}`;
 }
 
 function takeFittingSegments(
