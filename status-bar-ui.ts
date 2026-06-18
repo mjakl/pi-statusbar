@@ -14,7 +14,6 @@ import type { StatusLayout } from "./layout.js";
 export const SECONDARY_WIDGET_ID = "powerline-secondary";
 
 const MIN_EDITOR_WIDTH = 10;
-const CONTENT_PREFIX_WIDTH = 3;
 const HORIZONTAL_BORDER = "─";
 
 interface SetupStatusBarUiParams {
@@ -30,13 +29,12 @@ function createBorderLine(width: number): string {
   return ` ${border}`;
 }
 
-function createPromptPrefix(): string {
-  const prompt = `${ansi.getFgAnsi(200, 200, 200)}>${ansi.reset}`;
-  return ` ${prompt} `;
-}
-
 function stripAnsi(input: string): string {
   return input.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function stripTrailingSpaces(input: string): string {
+  return input.replace(/ +$/g, "");
 }
 
 function findBottomBorderIndex(lines: string[]): number {
@@ -59,10 +57,6 @@ function decorateEditorLines(
     return originalLines;
   }
 
-  const contentWidth = Math.max(1, width - CONTENT_PREFIX_WIDTH);
-  const promptPrefix = createPromptPrefix();
-  const continuationPrefix = "   ";
-
   const result: string[] = [];
   const bottomBorderIndex = findBottomBorderIndex(originalLines);
 
@@ -70,12 +64,11 @@ function decorateEditorLines(
   result.push(createBorderLine(width));
 
   for (let i = 1; i < bottomBorderIndex; i++) {
-    const prefix = i === 1 ? promptPrefix : continuationPrefix;
-    result.push(`${prefix}${originalLines[i] || ""}`);
+    result.push(stripTrailingSpaces(originalLines[i] || ""));
   }
 
   if (bottomBorderIndex === 1) {
-    result.push(`${promptPrefix}${" ".repeat(contentWidth)}`);
+    result.push("");
   }
 
   result.push(createBorderLine(width));
@@ -145,8 +138,7 @@ export function setupStatusBarUi(params: SetupStatusBarUiParams): void {
         return originalRender(width);
       }
 
-      const contentWidth = Math.max(1, width - CONTENT_PREFIX_WIDTH);
-      const lines = originalRender(contentWidth);
+      const lines = originalRender(width);
       const layout = getLayout(width, context.ui.theme);
 
       return decorateEditorLines(width, lines, layout.topContent);
