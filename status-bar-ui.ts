@@ -73,6 +73,8 @@ function decorateEditorLines(
     result.push("");
   }
 
+  result.push(createBorderLine(width));
+
   for (let i = bottomBorderIndex + 1; i < originalLines.length; i++) {
     result.push(originalLines[i] || "");
   }
