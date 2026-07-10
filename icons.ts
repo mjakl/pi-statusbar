@@ -28,6 +28,7 @@ export const THINKING_TEXT_UNICODE: Record<string, string> = {
   medium: "[med]",
   high: "[high]",
   xhigh: "[xhi]",
+  max: "[max]",
 };
 
 // Thinking level display text (Nerd Fonts - with icons)
@@ -37,6 +38,7 @@ export const THINKING_TEXT_NERD: Record<string, string> = {
   medium: "\u{F192} med",    // dot circle
   high: "\u{F111} high",     // circle
   xhigh: "\u{F06D} xhi",     // fire
+  max: "\u{F071} max",       // warning triangle
 };
 
 // Get thinking text based on font support

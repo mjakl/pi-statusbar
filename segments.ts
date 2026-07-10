@@ -68,6 +68,14 @@ function colorMutedModelKey(ctx: SegmentContext, text: string): string {
   return applyColor(ctx.theme, "dim", text);
 }
 
+function formatInlineThinking(ctx: SegmentContext, level: string): string {
+  const thinkingText = getThinkingText(level);
+  if (!thinkingText) return "";
+
+  const semantic: SemanticColor = level === "max" ? "thinkingMax" : "model";
+  return color(ctx, semantic, `${SEP_DOT}${thinkingText}`);
+}
+
 function stripAnsi(input: string): string {
   return input.replace(/\x1b\[[0-9;]*m/g, "");
 }
@@ -118,10 +126,7 @@ const modelSegment: StatusLineSegment = {
     if (opts.showThinkingLevel !== false && ctx.model?.reasoning) {
       const level = ctx.thinkingLevel || "off";
       if (level !== "off") {
-        const thinkingText = getThinkingText(level);
-        if (thinkingText) {
-          content += color(ctx, "model", `${SEP_DOT}${thinkingText}`);
-        }
+        content += formatInlineThinking(ctx, level);
       }
     }
 
@@ -147,10 +152,7 @@ const modelKeySegment: StatusLineSegment = {
     if (opts.showThinkingLevel !== false && ctx.model?.reasoning) {
       const level = ctx.thinkingLevel || "off";
       if (level !== "off") {
-        const thinkingText = getThinkingText(level);
-        if (thinkingText) {
-          content += color(ctx, "model", `${SEP_DOT}${thinkingText}`);
-        }
+        content += formatInlineThinking(ctx, level);
       }
     }
 
@@ -176,10 +178,7 @@ const modelNameSegment: StatusLineSegment = {
     if (opts.showThinkingLevel !== false && ctx.model?.reasoning) {
       const level = ctx.thinkingLevel || "off";
       if (level !== "off") {
-        const thinkingText = getThinkingText(level);
-        if (thinkingText) {
-          content += color(ctx, "model", `${SEP_DOT}${thinkingText}`);
-        }
+        content += formatInlineThinking(ctx, level);
       }
     }
 
@@ -290,9 +289,14 @@ const thinkingSegment: StatusLineSegment = {
       medium: "med",
       high: "high",
       xhigh: "xhigh",
+      max: "max",
     };
     const label = levelText[level] || level;
     const content = `think:${label}`;
+
+    if (level === "max") {
+      return { content: color(ctx, "thinkingMax", content), visible: true };
+    }
 
     // Use rainbow effect for high/xhigh (like Claude Code ultrathink)
     if (level === "high" || level === "xhigh") {

@@ -155,7 +155,7 @@ Because presets are plain TypeScript objects, they are straightforward to adjust
 | `model` | Active model name, with `model_key` in parentheses when available (`provider/model-id`, e.g. `openai-codex/gpt-5.3-codex`) using a muted tone of the model color; optionally includes inline thinking tag | `model` icon (`` / `◈`) |
 | `model_key` | Raw model key only (`provider/model-id`, e.g. `anthropic/claude-sonnet-4-20250514`), without the human-readable name; optionally includes inline thinking tag | `model` icon (`` / `◈`) |
 | `model_name` | Human-readable model name only, without the raw key suffix; optionally includes inline thinking tag | `model` icon (`` / `◈`) |
-| `thinking` | Current thinking level (`think:off/min/low/med/high/xhigh`) | no icon; text only |
+| `thinking` | Current thinking level (`think:off/min/low/med/high/xhigh/max`); `max` uses the red `thinkingMax` color | no icon; text only |
 | `path` | Current working directory, shown as basename, abbreviated path, or full path depending on preset | `folder` icon (`` / `📁`) |
 | `git` | Branch and file-state counters (`*` unstaged, `+` staged, `?` untracked) | `branch` icon (`` / `⎇`), or `git` icon (`` / `⎇`) when branch text is hidden |
 | `token_in` | Total input tokens in session | `input` icon (`` / `in:`) |
@@ -174,7 +174,7 @@ Because presets are plain TypeScript objects, they are straightforward to adjust
 
 Notes:
 
-- Thinking labels shown inside `model`, when enabled by a preset, use dedicated labels/icons per level.
+- Thinking labels shown inside `model`, when enabled by a preset, use dedicated labels/icons per level. The `max` label uses the red `thinkingMax` color.
 - Segment visibility is data-driven. For example, token, cost, and cache segments hide when their value is zero.
 
 ### Local development

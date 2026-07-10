@@ -25,6 +25,7 @@ const DEFAULT_COLORS: Required<ColorScheme> = {
   gitClean: "success",
   thinking: "muted",
   thinkingHigh: "accent",
+  thinkingMax: "error",
   context: "dim",
   contextWarn: "warning",
   contextError: "error",

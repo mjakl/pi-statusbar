@@ -13,6 +13,7 @@ export type SemanticColor =
   | "gitClean"
   | "thinking"
   | "thinkingHigh"
+  | "thinkingMax"
   | "context"
   | "contextWarn"
   | "contextError"
