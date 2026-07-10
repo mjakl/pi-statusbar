@@ -9,7 +9,7 @@ import { createSegmentContext } from "./helpers.js";
 
 process.env.POWERLINE_NERD_FONTS = "0";
 
-test("explicit secondary segments stay on the second row", () => {
+test("secondary segments remain on the top row when they fit", () => {
   const preset: PresetDef = {
     leftSegments: ["thinking"],
     rightSegments: [],
@@ -21,8 +21,23 @@ test("explicit secondary segments stay on the second row", () => {
   const shortHostname = hostname().split(".")[0]!;
 
   assert.match(layout.topContent, /think:off/);
-  assert.doesNotMatch(layout.topContent, new RegExp(shortHostname));
-  assert.match(layout.secondaryContent, new RegExp(shortHostname));
+  assert.match(layout.topContent, new RegExp(shortHostname));
+  assert.equal(layout.secondaryContent, "");
+});
+
+test("secondary segments move to the second row only when needed", () => {
+  const preset: PresetDef = {
+    leftSegments: ["pi"],
+    rightSegments: [],
+    secondarySegments: ["thinking"],
+    separator: "pipe",
+  };
+
+  const layout = computeResponsiveLayout(createSegmentContext(), preset, 10);
+
+  assert.match(layout.topContent, /π/);
+  assert.doesNotMatch(layout.topContent, /think:off/);
+  assert.match(layout.secondaryContent, /think:off/);
 });
 
 test("an oversized overflow segment does not suppress later short segments", () => {

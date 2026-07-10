@@ -88,7 +88,7 @@ export interface StatusLineSegmentOptions {
 export interface PresetDef {
   leftSegments: StatusLineSegmentId[];
   rightSegments: StatusLineSegmentId[];
-  /** Segments reserved for the second status-bar row. */
+  /** Low-priority segments that overflow to the second row when needed. */
   secondarySegments?: StatusLineSegmentId[];
   separator: StatusLineSeparatorStyle;
   segmentOptions?: StatusLineSegmentOptions;

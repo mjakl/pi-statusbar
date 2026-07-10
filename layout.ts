@@ -118,17 +118,22 @@ export function computeResponsiveLayout(
   const separatorDef = getSeparator(presetDef.separator);
   const separatorWidth = visibleWidth(separatorDef.left) + 2;
 
-  const primaryIds = [...presetDef.leftSegments, ...presetDef.rightSegments];
-  const primarySegments = measureSegments(primaryIds, context);
-  const explicitSecondarySegments = measureSegments(presetDef.secondarySegments ?? [], context);
+  // `secondarySegments` are low-priority additions to the top row. They move
+  // to the second row only when the complete row no longer fits.
+  const segmentIds = [
+    ...presetDef.leftSegments,
+    ...presetDef.rightSegments,
+    ...(presetDef.secondarySegments ?? []),
+  ];
+  const segments = measureSegments(segmentIds, context);
 
   const { fitting: topSegments, overflow } = takeFittingPrimarySegments(
-    primarySegments,
+    segments,
     availableWidth,
     separatorWidth,
   );
   const secondarySegments = takeFittingSecondarySegments(
-    [...overflow, ...explicitSecondarySegments],
+    overflow,
     availableWidth,
     separatorWidth,
   );
