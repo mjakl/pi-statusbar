@@ -1,17 +1,16 @@
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { ReadonlyFooterDataProvider, Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionContext,
+  ReadonlyFooterDataProvider,
+  SessionEntry,
+  Theme,
+} from "@earendil-works/pi-coding-agent";
 
 import { getGitStatus } from "./git-status.js";
 import { getPreset } from "./presets.js";
-import type { ModelLike, RuntimeContextLike, SessionEventLike } from "./runtime-types.js";
 import { getDefaultColors } from "./theme.js";
 import type { ColorScheme, SegmentContext, UsageStats } from "./types.js";
-
-interface UsageSnapshot {
-  usageStats: UsageStats;
-  lastAssistant: AssistantMessageLike | null;
-  thinkingLevel: string;
-}
 
 type AssistantMessageLike = Partial<AssistantMessage> & {
   role?: string;
@@ -21,13 +20,12 @@ type AssistantMessageLike = Partial<AssistantMessage> & {
 };
 
 export interface SegmentContextInput {
-  runtimeContext: RuntimeContextLike;
-  modelOverride?: ModelLike;
+  runtimeContext: ExtensionContext;
+  thinkingLevel: ThinkingLevel;
   presetName: Parameters<typeof getPreset>[0];
   sessionStartTime: number;
   footerData: ReadonlyFooterDataProvider | null;
   theme: Theme;
-  fallbackThinkingLevel?: string;
 }
 
 function createEmptyUsageStats(): UsageStats {
@@ -48,48 +46,41 @@ function readUsage(message: AssistantMessageLike): UsageStats {
   };
 }
 
-function isAssistantMessageEvent(event: SessionEventLike): boolean {
-  return event.type === "message" && event.message?.role === "assistant";
+function getAssistantMessage(entry: SessionEntry): AssistantMessageLike | null {
+  if (entry.type !== "message" || entry.message.role !== "assistant") {
+    return null;
+  }
+  return entry.message as AssistantMessageLike;
 }
 
-function isUsableAssistantMessage(message: AssistantMessageLike): boolean {
-  return message.stopReason !== "error" && message.stopReason !== "aborted";
-}
-
-function collectUsageSnapshot(sessionEvents: SessionEventLike[]): UsageSnapshot {
+function collectUsageStats(sessionEntries: readonly SessionEntry[]): UsageStats {
   const usageStats = createEmptyUsageStats();
 
-  let thinkingLevel = "off";
-  let lastAssistant: AssistantMessageLike | null = null;
+  for (const entry of sessionEntries) {
+    const message = getAssistantMessage(entry);
+    if (!message) continue;
 
-  for (const event of sessionEvents) {
-    if (event.type === "thinking_level_change" && event.thinkingLevel) {
-      thinkingLevel = event.thinkingLevel;
-    }
-
-    if (!isAssistantMessageEvent(event) || !event.message) {
-      continue;
-    }
-
-    const assistantMessage = event.message as AssistantMessageLike;
-    if (!isUsableAssistantMessage(assistantMessage)) {
-      continue;
-    }
-
-    const usage = readUsage(assistantMessage);
+    // Usage can still be billable for aborted/error responses, matching Pi's
+    // built-in session-total semantics.
+    const usage = readUsage(message);
     usageStats.input += usage.input;
     usageStats.output += usage.output;
     usageStats.cacheRead += usage.cacheRead;
     usageStats.cacheWrite += usage.cacheWrite;
     usageStats.cost += usage.cost;
-    lastAssistant = assistantMessage;
   }
 
-  return {
-    usageStats,
-    lastAssistant,
-    thinkingLevel,
-  };
+  return usageStats;
+}
+
+function findLastUsableAssistant(branchEntries: readonly SessionEntry[]): AssistantMessageLike | null {
+  for (let index = branchEntries.length - 1; index >= 0; index--) {
+    const message = getAssistantMessage(branchEntries[index]!);
+    if (message && message.stopReason !== "error" && message.stopReason !== "aborted") {
+      return message;
+    }
+  }
+  return null;
 }
 
 function computeContextPercent(lastAssistant: AssistantMessageLike | null, contextWindow: number): number | null {
@@ -99,26 +90,24 @@ function computeContextPercent(lastAssistant: AssistantMessageLike | null, conte
 
   const usage = readUsage(lastAssistant);
   const totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-
   return (totalTokens / contextWindow) * 100;
 }
 
 function getContextStats(
-  runtimeContext: RuntimeContextLike,
-  activeModel: ModelLike | undefined,
+  runtimeContext: ExtensionContext,
   lastAssistant: AssistantMessageLike | null,
 ): { contextWindow: number; contextPercent: number | null } {
-  const contextUsage = runtimeContext.getContextUsage?.();
+  const contextUsage = runtimeContext.getContextUsage();
   if (contextUsage) {
     return {
-      contextWindow: contextUsage.contextWindow || (activeModel?.contextWindow ?? 0),
+      contextWindow: contextUsage.contextWindow || (runtimeContext.model?.contextWindow ?? 0),
       contextPercent: typeof contextUsage.percent === "number" && Number.isFinite(contextUsage.percent)
         ? contextUsage.percent
         : null,
     };
   }
 
-  const contextWindow = activeModel?.contextWindow ?? 0;
+  const contextWindow = runtimeContext.model?.contextWindow ?? 0;
   return {
     contextWindow,
     contextPercent: computeContextPercent(lastAssistant, contextWindow),
@@ -128,43 +117,34 @@ function getContextStats(
 export function buildSegmentContext(input: SegmentContextInput): SegmentContext {
   const {
     runtimeContext,
-    modelOverride,
+    thinkingLevel,
     presetName,
     sessionStartTime,
     footerData,
     theme,
-    fallbackThinkingLevel,
   } = input;
 
   const preset = getPreset(presetName);
   const colors: ColorScheme = preset.colors ?? getDefaultColors();
-
-  const sessionEvents = runtimeContext.sessionManager?.getBranch?.() ?? [];
-  const usageSnapshot = collectUsageSnapshot(sessionEvents);
-
-  const activeModel = modelOverride ?? runtimeContext.model;
-
-  const { contextWindow, contextPercent } = getContextStats(
-    runtimeContext,
-    activeModel,
-    usageSnapshot.lastAssistant,
-  );
+  const sessionEntries = runtimeContext.sessionManager.getEntries();
+  const branchEntries = runtimeContext.sessionManager.getBranch();
+  const lastAssistant = findLastUsableAssistant(branchEntries);
+  const { contextWindow, contextPercent } = getContextStats(runtimeContext, lastAssistant);
 
   const gitBranch = footerData?.getGitBranch() ?? null;
-  const gitStatus = getGitStatus(gitBranch);
-
-  const usingSubscription = activeModel
-    ? runtimeContext.modelRegistry?.isUsingOAuth?.(activeModel) ?? false
+  const gitStatus = getGitStatus(gitBranch, runtimeContext.cwd);
+  const usingSubscription = runtimeContext.model
+    ? runtimeContext.modelRegistry.isUsingOAuth(runtimeContext.model)
     : false;
 
   return {
-    model: activeModel,
-    thinkingLevel: usageSnapshot.thinkingLevel || fallbackThinkingLevel || "off",
-    sessionId: runtimeContext.sessionManager?.getSessionId?.(),
-    usageStats: usageSnapshot.usageStats,
+    model: runtimeContext.model,
+    thinkingLevel,
+    sessionId: runtimeContext.sessionManager.getSessionId(),
+    cwd: runtimeContext.cwd,
+    usageStats: collectUsageStats(sessionEntries),
     contextPercent,
     contextWindow,
-    autoCompactEnabled: runtimeContext.settingsManager?.getCompactionSettings?.()?.enabled ?? true,
     usingSubscription,
     sessionStartTime,
     git: gitStatus,

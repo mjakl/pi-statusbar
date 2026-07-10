@@ -67,11 +67,13 @@ When you switch presets, the selected preset is saved automatically.
 
 ### Configuration
 
-User configuration is stored in:
+User configuration is stored under Pi's agent directory:
 
 ```text
 ~/.pi/agent/extensions/pi-statusbar.json
 ```
+
+If `PI_CODING_AGENT_DIR` is set, that directory is used instead.
 
 Example:
 
@@ -95,8 +97,10 @@ Supported top-level keys:
 
 Supported theme override values:
 
-- Pi theme color names: `accent`, `primary`, `muted`, `dim`, `text`, `success`, `warning`, `error`, `borderMuted`
-- Hex colors: `#rrggbb`
+- Current Pi foreground theme colors, including `accent`, `muted`, `dim`, `text`, `success`, `warning`, `error`, and `borderMuted`
+- Six-digit hex colors: `#rrggbb`
+
+Unknown semantic keys, obsolete Pi color names, and malformed hex values are ignored.
 
 ### Nerd Font detection
 
@@ -122,13 +126,14 @@ These sections are for advanced customization and maintainers.
 
 The JSON config selects a preset and color overrides. Layout structure is defined in TypeScript preset objects.
 
-To customize layout in an installed checkout, edit:
+For source-level layout customization, clone this repository locally and install that checkout:
 
-```text
-~/.pi/agent/extensions/pi-statusbar/presets.ts
+```bash
+git clone https://github.com/mjakl/pi-statusbar.git
+pi install /path/to/pi-statusbar
 ```
 
-Then restart Pi.
+Then edit `presets.ts` in that checkout and restart Pi. Avoid editing Pi's managed Git-package clone because package reconciliation resets local changes.
 
 Recommended workflow:
 
@@ -140,7 +145,7 @@ Preset fields:
 
 - `leftSegments` — segment order on the top row, left to right.
 - `rightSegments` — additional top-row segments appended after left segments.
-- `secondarySegments` — overflow row shown as a second status-bar line above the editor when space allows.
+- `secondarySegments` — segments reserved for the second status-bar line; overflow from the top row is placed before them.
 - `separator` — separator style between segments.
 - `segmentOptions` — per-segment behavior such as path mode, git counters, and time format.
 - `colors` — semantic color palette used by that preset.
@@ -161,10 +166,10 @@ Because presets are plain TypeScript objects, they are straightforward to adjust
 | `token_in` | Total input tokens in session | `input` icon (`` / `in:`) |
 | `token_out` | Total output tokens in session | `output` icon (`` / `out:`) |
 | `token_total` | Combined token count, including input, output, cache read, and cache write | `tokens` icon (`` / `⊛`) |
-| `cost` | Session cost or `(sub)` for subscription usage | no icon; text only |
-| `context_pct` | Context usage percentage and window (`xx.x%/N`), plus auto-compact marker when enabled. Right after compaction this may briefly show `?/N` until Pi has a fresh context estimate. | Dynamic battery icon: `<20%` `󰂄` / `⚡`, `20-80%` `󱊢` / `◫`, `>80%` `󰂃` / `!`, plus auto icon (`󰁨` / `⚡`) |
+| `cost` | Session cost, with `(sub)` appended for subscription usage | no icon; text only |
+| `context_pct` | Context usage percentage and window (`xx.x%/N`). Right after compaction this may briefly show `?/N` until Pi has a fresh context estimate. | Dynamic battery icon: `<20%` `󰂄` / `⚡`, `20-80%` `󱊢` / `◫`, `>80%` `󰂃` / `!` |
 | `context_total` | Model context window size only | `context` icon (`` / `◫`) |
-| `time_spent` | Elapsed session time (`1m20s`, `2h5m`) | `time` icon (`` / `◷`) |
+| `time_spent` | Elapsed time since the current session was opened (`1m20s`, `2h5m`) | `time` icon (`` / `◷`) |
 | `time` | Current local time, 24h or 12h, optional seconds | `time` icon (`` / `◷`) |
 | `session` | Short session id, first 8 characters | `session` icon (`` / `id`) |
 | `hostname` | Machine hostname | `host` icon (`` / `host`) |
@@ -175,6 +180,7 @@ Because presets are plain TypeScript objects, they are straightforward to adjust
 Notes:
 
 - Thinking labels shown inside `model`, when enabled by a preset, use dedicated labels/icons per level. The `max` label uses the red `thinkingMax` color.
+- Token and cost totals include all assistant entries in the session, including abandoned branches and interrupted responses.
 - Segment visibility is data-driven. For example, token, cost, and cache segments hide when their value is zero.
 
 ### Local development
@@ -183,6 +189,7 @@ This package ships TypeScript files directly because Pi loads extension entry po
 
 ```bash
 npm install
+npm run check
 pi -e .
 ```
 

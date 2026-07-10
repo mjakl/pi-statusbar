@@ -1,30 +1,27 @@
-import { CustomEditor, type ReadonlyFooterDataProvider, type Theme } from "@earendil-works/pi-coding-agent";
+import {
+  CustomEditor,
+  type ExtensionContext,
+  type KeybindingsManager,
+  type ReadonlyFooterDataProvider,
+  type Theme,
+} from "@earendil-works/pi-coding-agent";
+import type { Component, EditorTheme, TUI } from "@earendil-works/pi-tui";
 
-import { ansi, getFgAnsiCode } from "./colors.js";
-import type {
-  EditorLike,
-  FooterComponentLike,
-  RuntimeContextLike,
-  TuiLike,
-  UiLike,
-} from "./runtime-types.js";
 import type { StatusLayout } from "./layout.js";
 
-export const SECONDARY_WIDGET_ID = "powerline-secondary";
+export const STATUS_WIDGET_ID = "powerline-status";
 
 const MIN_EDITOR_WIDTH = 10;
 const HORIZONTAL_BORDER = "─";
 
 interface SetupStatusBarUiParams {
-  context: RuntimeContextLike;
+  context: ExtensionContext;
   getLayout: (width: number, theme: Theme) => StatusLayout;
+  renderBorder: (width: number, theme: Theme) => string;
   onFooterDataProviderChanged: (provider: ReadonlyFooterDataProvider | null) => void;
-  onTuiChanged: (tui: TuiLike | null) => void;
-}
-
-function createBorderLine(width: number): string {
-  const borderColor = getFgAnsiCode("sep");
-  return `${borderColor}${HORIZONTAL_BORDER.repeat(width)}${ansi.reset}`;
+  onTuiChanged: (tui: TUI | null) => void;
+  onBranchChanged: () => void;
+  onInvalidate: () => void;
 }
 
 function stripAnsi(input: string): string {
@@ -36,10 +33,10 @@ function stripTrailingSpaces(input: string): string {
 }
 
 function findBottomBorderIndex(lines: string[]): number {
-  for (let i = lines.length - 1; i >= 1; i--) {
-    const stripped = stripAnsi(lines[i] ?? "");
+  for (let index = lines.length - 1; index >= 1; index--) {
+    const stripped = stripAnsi(lines[index] ?? "");
     if (stripped.length > 0 && /^─{3,}/.test(stripped)) {
-      return i;
+      return index;
     }
   }
 
@@ -47,9 +44,9 @@ function findBottomBorderIndex(lines: string[]): number {
 }
 
 function decorateEditorLines(
-  width: number,
   originalLines: string[],
   statusLines: string[],
+  borderLine: string,
 ): string[] {
   if (originalLines.length === 0) {
     return originalLines;
@@ -63,91 +60,142 @@ function decorateEditorLines(
       result.push(statusLine);
     }
   }
-  result.push(createBorderLine(width));
+  result.push(borderLine);
 
-  for (let i = 1; i < bottomBorderIndex; i++) {
-    result.push(stripTrailingSpaces(originalLines[i] || ""));
+  for (let index = 1; index < bottomBorderIndex; index++) {
+    result.push(stripTrailingSpaces(originalLines[index] ?? ""));
   }
 
   if (bottomBorderIndex === 1) {
     result.push("");
   }
 
-  result.push(createBorderLine(width));
+  result.push(borderLine);
 
-  for (let i = bottomBorderIndex + 1; i < originalLines.length; i++) {
-    result.push(originalLines[i] || "");
+  for (let index = bottomBorderIndex + 1; index < originalLines.length; index++) {
+    result.push(originalLines[index] ?? "");
   }
 
   return result;
 }
 
-function createEmptyFooterComponent(dispose: () => void): FooterComponentLike {
+function createStatusWidget(
+  getLayout: (width: number, theme: Theme) => StatusLayout,
+  theme: Theme,
+  onInvalidate: () => void,
+): Component {
   return {
-    dispose,
-    invalidate() {},
-    render(): string[] {
-      return [];
+    render(width: number): string[] {
+      const layout = getLayout(width, theme);
+      return [layout.topContent, layout.secondaryContent].filter(Boolean);
+    },
+    invalidate(): void {
+      onInvalidate();
     },
   };
 }
 
-export function clearStatusBarUi(ui: UiLike): void {
-  ui.setEditorComponent(undefined);
-  ui.setFooter(undefined);
-  ui.setWidget(SECONDARY_WIDGET_ID, undefined);
-}
+/**
+ * Install the status bar and return an idempotent cleanup function.
+ *
+ * If another extension already owns the editor, render as a widget instead of
+ * assuming that editor has CustomEditor's border shape.
+ */
+export function setupStatusBarUi(params: SetupStatusBarUiParams): () => void {
+  const {
+    context,
+    getLayout,
+    renderBorder,
+    onFooterDataProviderChanged,
+    onTuiChanged,
+    onBranchChanged,
+    onInvalidate,
+  } = params;
 
-export function setupStatusBarUi(params: SetupStatusBarUiParams): void {
-  const { context, getLayout, onFooterDataProviderChanged, onTuiChanged } = params;
+  const previousEditorFactory = context.ui.getEditorComponent();
+  let installedEditorFactory: ReturnType<typeof context.ui.getEditorComponent>;
+  let ownsFooter = false;
+  let disposed = false;
 
-  let currentEditor: EditorLike | null = null;
-  let autocompleteFixed = false;
-
-  const editorFactory = (tui: TuiLike, editorTheme: unknown, keybindings: unknown): EditorLike => {
-    const editor = new CustomEditor(tui, editorTheme, keybindings);
-    currentEditor = editor;
-
-    const originalHandleInput = editor.handleInput.bind(editor);
-    editor.handleInput = (data: string) => {
-      if (!autocompleteFixed && !editor.autocompleteProvider) {
-        autocompleteFixed = true;
-        context.ui.setEditorComponent(editorFactory);
-        currentEditor?.handleInput(data);
-        return;
+  if (previousEditorFactory) {
+    context.ui.setWidget(
+      STATUS_WIDGET_ID,
+      (tui, theme) => {
+        onTuiChanged(tui);
+        return createStatusWidget(getLayout, theme, onInvalidate);
+      },
+      { placement: "aboveEditor" },
+    );
+  } else {
+    class StatusBarEditor extends CustomEditor {
+      constructor(tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) {
+        super(tui, editorTheme, keybindings);
+        onTuiChanged(tui);
       }
 
-      originalHandleInput(data);
-    };
+      override render(width: number): string[] {
+        const originalLines = super.render(width);
+        if (width < MIN_EDITOR_WIDTH) {
+          return originalLines;
+        }
 
-    const originalRender = editor.render.bind(editor);
-    editor.render = (width: number): string[] => {
-      if (width < MIN_EDITOR_WIDTH) {
-        return originalRender(width);
+        const layout = getLayout(width, context.ui.theme);
+        return decorateEditorLines(
+          originalLines,
+          [layout.topContent, layout.secondaryContent],
+          renderBorder(width, context.ui.theme),
+        );
       }
 
-      const lines = originalRender(width);
-      const layout = getLayout(width, context.ui.theme);
+      override invalidate(): void {
+        super.invalidate();
+        onInvalidate();
+      }
+    }
 
-      return decorateEditorLines(width, lines, [layout.topContent, layout.secondaryContent]);
-    };
+    installedEditorFactory = (tui, theme, keybindings) => new StatusBarEditor(tui, theme, keybindings);
+    context.ui.setEditorComponent(installedEditorFactory);
+    context.ui.setWidget(STATUS_WIDGET_ID, undefined);
+  }
 
-    return editor;
-  };
-
-  context.ui.setEditorComponent(editorFactory);
-
+  ownsFooter = true;
   context.ui.setFooter((tui, _theme, footerData) => {
+    ownsFooter = true;
     onTuiChanged(tui);
     onFooterDataProviderChanged(footerData);
 
-    const unsubscribe = footerData.onBranchChange(() => tui.requestRender());
-    return createEmptyFooterComponent(() => {
-      unsubscribe();
-      onFooterDataProviderChanged(null);
-      onTuiChanged(null);
+    const unsubscribe = footerData.onBranchChange(() => {
+      onBranchChanged();
+      tui.requestRender();
     });
+    return {
+      dispose(): void {
+        ownsFooter = false;
+        unsubscribe();
+        onFooterDataProviderChanged(null);
+      },
+      invalidate(): void {
+        onInvalidate();
+      },
+      render(): string[] {
+        return [];
+      },
+    };
   });
 
-  context.ui.setWidget(SECONDARY_WIDGET_ID, undefined);
+  return () => {
+    if (disposed) return;
+    disposed = true;
+
+    if (installedEditorFactory && context.ui.getEditorComponent() === installedEditorFactory) {
+      context.ui.setEditorComponent(previousEditorFactory);
+    }
+
+    context.ui.setWidget(STATUS_WIDGET_ID, undefined);
+    if (ownsFooter) {
+      context.ui.setFooter(undefined);
+    }
+    onFooterDataProviderChanged(null);
+    onTuiChanged(null);
+  };
 }

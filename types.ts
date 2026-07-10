@@ -1,31 +1,33 @@
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { Model } from "@earendil-works/pi-ai";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
-// Theme color - either a pi theme color name or a custom hex color
+// Theme color - either a Pi theme color name or a custom hex color.
 export type ColorValue = ThemeColor | `#${string}`;
 
-// Semantic color names for segments
-export type SemanticColor =
-  | "pi"
-  | "model"
-  | "path"
-  | "git"
-  | "gitDirty"
-  | "gitClean"
-  | "thinking"
-  | "thinkingHigh"
-  | "thinkingMax"
-  | "context"
-  | "contextWarn"
-  | "contextError"
-  | "cost"
-  | "tokens"
-  | "separator"
-  | "border";
+export const SEMANTIC_COLORS = [
+  "pi",
+  "model",
+  "path",
+  "gitDirty",
+  "gitClean",
+  "thinking",
+  "thinkingMax",
+  "context",
+  "contextWarn",
+  "contextError",
+  "cost",
+  "tokens",
+  "separator",
+  "border",
+] as const;
 
-// Color scheme mapping semantic names to actual colors
+export type SemanticColor = (typeof SEMANTIC_COLORS)[number];
+
+// Color scheme mapping semantic names to actual colors.
 export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
 
-// Segment identifiers
+// Segment identifiers.
 export type StatusLineSegmentId =
   | "pi"
   | "model"
@@ -48,7 +50,7 @@ export type StatusLineSegmentId =
   | "thinking"
   | "extension_statuses";
 
-// Separator styles
+// Separator styles.
 export type StatusLineSeparatorStyle =
   | "powerline"
   | "powerline-thin"
@@ -61,7 +63,7 @@ export type StatusLineSeparatorStyle =
   | "chevron"
   | "star";
 
-// Preset names
+// Preset names.
 export type StatusLinePreset =
   | "default"
   | "focused"
@@ -71,10 +73,10 @@ export type StatusLinePreset =
   | "nerd"
   | "ascii";
 
-// Per-segment options
+// Per-segment options.
 export interface StatusLineSegmentOptions {
   model?: { showThinkingLevel?: boolean };
-  path?: { 
+  path?: {
     mode?: "basename" | "abbreviated" | "full";
     maxLength?: number;
   };
@@ -82,19 +84,19 @@ export interface StatusLineSegmentOptions {
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
 }
 
-// Preset definition
+// Preset definition.
 export interface PresetDef {
   leftSegments: StatusLineSegmentId[];
   rightSegments: StatusLineSegmentId[];
-  /** Secondary row segments (shown in footer, above sub bar) */
+  /** Segments reserved for the second status-bar row. */
   secondarySegments?: StatusLineSegmentId[];
   separator: StatusLineSeparatorStyle;
   segmentOptions?: StatusLineSegmentOptions;
-  /** Color scheme for this preset */
+  /** Color scheme for this preset. */
   colors?: ColorScheme;
 }
 
-// Separator definition
+// Separator definition.
 export interface SeparatorDef {
   left: string;
   right: string;
@@ -105,7 +107,7 @@ export interface SeparatorDef {
   };
 }
 
-// Git status data
+// Git status data.
 export interface GitStatus {
   branch: string | null;
   staged: number;
@@ -113,7 +115,7 @@ export interface GitStatus {
   untracked: number;
 }
 
-// Usage statistics
+// Usage statistics.
 export interface UsageStats {
   input: number;
   output: number;
@@ -122,42 +124,31 @@ export interface UsageStats {
   cost: number;
 }
 
-// Context passed to segment render functions
+// Context passed to segment render functions.
 export interface SegmentContext {
-  // From pi-mono
-  model: { id: string; name?: string; provider?: string; reasoning?: boolean; contextWindow?: number } | undefined;
-  thinkingLevel: string;
+  model: Model<any> | undefined;
+  thinkingLevel: ThinkingLevel;
   sessionId: string | undefined;
-  
-  // Computed
+  cwd: string;
+
   usageStats: UsageStats;
   contextPercent: number | null;
   contextWindow: number;
-  autoCompactEnabled: boolean;
   usingSubscription: boolean;
   sessionStartTime: number;
-  
-  // Git
+
   git: GitStatus;
-  
-  // Extension statuses
   extensionStatuses: ReadonlyMap<string, string>;
-  
-  // Options
   options: StatusLineSegmentOptions;
-  
-  // Theming
   theme: Theme;
   colors: ColorScheme;
 }
 
-// Rendered segment output
 export interface RenderedSegment {
   content: string;
   visible: boolean;
 }
 
-// Segment definition
 export interface StatusLineSegment {
   id: StatusLineSegmentId;
   render(ctx: SegmentContext): RenderedSegment;

@@ -18,16 +18,25 @@
   ],
   "author": "Michael Jakl",
   "license": "MIT",
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mjakl/pi-statusbar.git"
   },
   "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
   },
   "peerDependenciesMeta": {
+    "@earendil-works/pi-agent-core": {
+      "optional": true
+    },
     "@earendil-works/pi-ai": {
       "optional": true
     },
@@ -37,6 +46,15 @@
     "@earendil-works/pi-tui": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "^0.80.6",
+    "@earendil-works/pi-ai": "^0.80.6",
+    "@earendil-works/pi-coding-agent": "^0.80.6",
+    "@earendil-works/pi-tui": "^0.80.6",
+    "@types/node": "^22.19.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
   },
   "pi": {
     "extensions": [

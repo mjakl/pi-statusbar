@@ -1,39 +1,42 @@
-import type { ExtensionAPI, ReadonlyFooterDataProvider, Theme } from "@earendil-works/pi-coding-agent";
-
-import { saveStatusbarConfig, loadStatusbarConfig } from "./config.js";
-import { invalidateGitBranch, invalidateGitStatus } from "./git-status.js";
-import { computeResponsiveLayout, ResponsiveLayoutCache, type StatusLayout } from "./layout.js";
-import { PRESETS, getPreset } from "./presets.js";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type {
-  ModelLike,
-  ModelSelectEventLike,
-  RuntimeContextLike,
-  ToolResultEventLike,
-  TuiLike,
-  UserBashEventLike,
-} from "./runtime-types.js";
+  ExtensionAPI,
+  ExtensionContext,
+  ReadonlyFooterDataProvider,
+  Theme,
+} from "@earendil-works/pi-coding-agent";
+import type { TUI } from "@earendil-works/pi-tui";
+
+import { loadStatusbarConfig, saveStatusbarConfig } from "./config.js";
+import {
+  disposeGitStatus,
+  invalidateGitStatus,
+  setGitStatusCwd,
+  subscribeGitStatus,
+} from "./git-status.js";
+import { computeResponsiveLayout, ResponsiveLayoutCache, type StatusLayout } from "./layout.js";
+import { getPreset, PRESETS } from "./presets.js";
 import { buildSegmentContext } from "./segment-context.js";
-import { clearStatusBarUi, setupStatusBarUi } from "./status-bar-ui.js";
+import { setupStatusBarUi } from "./status-bar-ui.js";
+import { fg } from "./theme.js";
 import type { StatusLinePreset } from "./types.js";
 
-const GIT_BRANCH_CHANGE_PATTERNS = [
-  /\bgit\s+(checkout|switch|branch\s+-[dDmM]|merge|rebase|pull|reset|worktree)/,
-  /\bgit\s+stash\s+(pop|apply)/,
-] as const;
-
-const FAST_BRANCH_RERENDER_DELAYS_MS = [100] as const;
-const BRANCH_RERENDER_DELAYS_MS = [100, 300, 500] as const;
+const USER_BASH_REFRESH_DELAYS_MS = [100, 500, 1500, 5000, 15_000] as const;
+const HORIZONTAL_BORDER = "─";
 
 interface PowerlineState {
   enabled: boolean;
   preset: StatusLinePreset;
   sessionStartTime: number;
-  runtimeContext: RuntimeContextLike | null;
-  activeModel: ModelLike | undefined;
+  runtimeContext: ExtensionContext | null;
+  thinkingLevel: ThinkingLevel;
   footerDataProvider: ReadonlyFooterDataProvider | null;
-  tui: TuiLike | null;
-  thinkingLevelGetter: (() => string) | null;
+  tui: TUI | null;
   layoutCache: ResponsiveLayoutCache;
+  disposeUi: (() => void) | null;
+  unsubscribeGitStatus: (() => void) | null;
+  clockTimer: ReturnType<typeof setTimeout> | null;
+  scheduledTimers: Set<ReturnType<typeof setTimeout>>;
 }
 
 function isKnownPreset(value: string): value is StatusLinePreset {
@@ -42,10 +45,9 @@ function isKnownPreset(value: string): value is StatusLinePreset {
 
 function getInitialPreset(): StatusLinePreset {
   const configuredPreset = loadStatusbarConfig().preset;
-  if (typeof configuredPreset === "string" && isKnownPreset(configuredPreset)) {
-    return configuredPreset;
-  }
-  return "default";
+  return typeof configuredPreset === "string" && isKnownPreset(configuredPreset)
+    ? configuredPreset
+    : "default";
 }
 
 function createInitialState(): PowerlineState {
@@ -54,32 +56,15 @@ function createInitialState(): PowerlineState {
     preset: getInitialPreset(),
     sessionStartTime: Date.now(),
     runtimeContext: null,
-    activeModel: undefined,
+    thinkingLevel: "off",
     footerDataProvider: null,
     tui: null,
-    thinkingLevelGetter: null,
     layoutCache: new ResponsiveLayoutCache(),
+    disposeUi: null,
+    unsubscribeGitStatus: null,
+    clockTimer: null,
+    scheduledTimers: new Set(),
   };
-}
-
-function mightChangeGitBranch(command: string): boolean {
-  return GIT_BRANCH_CHANGE_PATTERNS.some((pattern) => pattern.test(command));
-}
-
-function requestRenderWithDelays(tui: TuiLike | null, delays: readonly number[]): void {
-  if (!tui) {
-    return;
-  }
-
-  for (const delay of delays) {
-    setTimeout(() => tui.requestRender(), delay);
-  }
-}
-
-function invalidateGitAndRender(state: PowerlineState, delays: readonly number[]): void {
-  invalidateGitStatus();
-  invalidateGitBranch();
-  requestRenderWithDelays(state.tui, delays);
 }
 
 function getFooterDataCacheKey(provider: ReadonlyFooterDataProvider | null): string {
@@ -100,157 +85,231 @@ function getLayout(state: PowerlineState, width: number, theme: Theme): StatusLa
   }
 
   const footerDataCacheKey = getFooterDataCacheKey(state.footerDataProvider);
-
   return state.layoutCache.get(width, footerDataCacheKey, () => {
     const segmentContext = buildSegmentContext({
       runtimeContext: context,
-      modelOverride: state.activeModel,
+      thinkingLevel: state.thinkingLevel,
       presetName: state.preset,
       sessionStartTime: state.sessionStartTime,
       footerData: state.footerDataProvider,
       theme,
-      fallbackThinkingLevel: state.thinkingLevelGetter?.(),
     });
 
     return computeResponsiveLayout(segmentContext, getPreset(state.preset), width);
   });
 }
 
-function installStatusBarUi(state: PowerlineState, context: RuntimeContextLike): void {
-  if (!context.hasUI) {
-    return;
-  }
-
-  setupStatusBarUi({
-    context,
-    getLayout: (width, theme) => getLayout(state, width, theme),
-    onFooterDataProviderChanged: (provider) => {
-      state.footerDataProvider = provider;
-      state.layoutCache.invalidate();
-      state.tui?.requestRender();
-    },
-    onTuiChanged: (tui) => {
-      state.tui = tui;
-    },
-  });
+function renderBorder(state: PowerlineState, width: number, theme: Theme): string {
+  return fg(theme, "border", HORIZONTAL_BORDER.repeat(width), getPreset(state.preset).colors);
 }
 
-function uninstallStatusBarUi(state: PowerlineState, context: RuntimeContextLike): void {
-  if (context.hasUI) {
-    clearStatusBarUi(context.ui);
-  }
-
-  state.footerDataProvider = null;
-  state.tui = null;
-  state.layoutCache.invalidate();
-}
-
-function applyPreset(state: PowerlineState, preset: StatusLinePreset): void {
-  state.preset = preset;
-  state.layoutCache.invalidate();
-}
-
-function toggleStatusBar(state: PowerlineState, context: RuntimeContextLike): void {
-  state.enabled = !state.enabled;
-
-  if (state.enabled) {
-    installStatusBarUi(state, context);
-    if (context.hasUI) {
-      context.ui.notify("Powerline enabled", "info");
-    }
-    return;
-  }
-
-  uninstallStatusBarUi(state, context);
-  if (context.hasUI) {
-    context.ui.notify("Defaults restored", "info");
+function clearClockTimer(state: PowerlineState): void {
+  if (state.clockTimer) {
+    clearTimeout(state.clockTimer);
+    state.clockTimer = null;
   }
 }
 
-function updateRuntimeContext(state: PowerlineState, context: RuntimeContextLike): void {
-  state.runtimeContext = context;
-  state.activeModel = context.model;
-  state.thinkingLevelGetter = typeof context.getThinkingLevel === "function"
-    ? () => context.getThinkingLevel?.() ?? "off"
-    : null;
+function getClockInterval(state: PowerlineState): number | null {
+  const preset = getPreset(state.preset);
+  const segmentIds = [
+    ...preset.leftSegments,
+    ...preset.rightSegments,
+    ...(preset.secondarySegments ?? []),
+  ];
+
+  if (segmentIds.includes("time_spent") || preset.segmentOptions?.time?.showSeconds) {
+    return 1000;
+  }
+  return segmentIds.includes("time") ? 60_000 : null;
 }
 
-function setRuntimeContext(state: PowerlineState, context: RuntimeContextLike): void {
-  updateRuntimeContext(state, context);
-  state.sessionStartTime = Date.now();
-  state.layoutCache.invalidate();
-}
-
-function refreshStatusBar(state: PowerlineState, context?: RuntimeContextLike): void {
+function refreshStatusBar(state: PowerlineState, context?: ExtensionContext): void {
   if (context) {
-    updateRuntimeContext(state, context);
+    state.runtimeContext = context;
   }
 
   state.layoutCache.invalidate();
   state.tui?.requestRender();
-  requestRenderWithDelays(state.tui, FAST_BRANCH_RERENDER_DELAYS_MS);
+}
+
+function syncClockTimer(state: PowerlineState): void {
+  clearClockTimer(state);
+
+  const interval = state.enabled && state.tui ? getClockInterval(state) : null;
+  if (!interval) return;
+
+  const delay = interval - (Date.now() % interval);
+  state.clockTimer = setTimeout(() => {
+    state.clockTimer = null;
+    refreshStatusBar(state);
+    syncClockTimer(state);
+  }, delay);
+}
+
+function clearScheduledTimers(state: PowerlineState): void {
+  for (const timer of state.scheduledTimers) {
+    clearTimeout(timer);
+  }
+  state.scheduledTimers.clear();
+}
+
+function scheduleUserBashRefresh(state: PowerlineState, cwd: string): void {
+  clearScheduledTimers(state);
+
+  for (const delay of USER_BASH_REFRESH_DELAYS_MS) {
+    const timer = setTimeout(() => {
+      state.scheduledTimers.delete(timer);
+      if (state.runtimeContext?.cwd !== cwd) return;
+
+      invalidateGitStatus();
+      refreshStatusBar(state);
+    }, delay);
+    state.scheduledTimers.add(timer);
+  }
+}
+
+function installStatusBarUi(state: PowerlineState, context: ExtensionContext): void {
+  if (context.mode !== "tui" || state.disposeUi) {
+    return;
+  }
+
+  state.disposeUi = setupStatusBarUi({
+    context,
+    getLayout: (width, theme) => getLayout(state, width, theme),
+    renderBorder: (width, theme) => renderBorder(state, width, theme),
+    onFooterDataProviderChanged: (provider) => {
+      state.footerDataProvider = provider;
+      refreshStatusBar(state);
+    },
+    onTuiChanged: (tui) => {
+      state.tui = tui;
+      syncClockTimer(state);
+    },
+    onBranchChanged: () => {
+      invalidateGitStatus();
+      refreshStatusBar(state);
+    },
+    onInvalidate: () => state.layoutCache.invalidate(),
+  });
+}
+
+function uninstallStatusBarUi(state: PowerlineState): void {
+  const dispose = state.disposeUi;
+  state.disposeUi = null;
+  dispose?.();
+
+  state.footerDataProvider = null;
+  state.tui = null;
+  state.layoutCache.invalidate();
+  clearClockTimer(state);
+}
+
+function setRuntimeContext(
+  state: PowerlineState,
+  context: ExtensionContext,
+  thinkingLevel: ThinkingLevel,
+): void {
+  state.runtimeContext = context;
+  state.thinkingLevel = thinkingLevel;
+  state.sessionStartTime = Date.now();
+  state.layoutCache.invalidate();
+
+  setGitStatusCwd(context.cwd);
+  invalidateGitStatus();
+}
+
+function applyPreset(state: PowerlineState, preset: StatusLinePreset): void {
+  state.preset = preset;
+  refreshStatusBar(state);
+  syncClockTimer(state);
+}
+
+function toggleStatusBar(state: PowerlineState, context: ExtensionContext): void {
+  state.enabled = !state.enabled;
+
+  if (state.enabled) {
+    installStatusBarUi(state, context);
+    syncClockTimer(state);
+    if (context.hasUI) context.ui.notify("Powerline enabled", "info");
+    return;
+  }
+
+  uninstallStatusBarUi(state);
+  if (context.hasUI) context.ui.notify("Defaults restored", "info");
 }
 
 export default function powerlineFooter(pi: ExtensionAPI) {
   const state = createInitialState();
 
-  pi.on("session_start", async (_event, rawContext) => {
-    const context = rawContext as RuntimeContextLike;
-    setRuntimeContext(state, context);
+  pi.on("session_start", async (_event, context) => {
+    setRuntimeContext(state, context, pi.getThinkingLevel());
 
-    if (state.enabled && context.hasUI) {
+    state.unsubscribeGitStatus?.();
+    state.unsubscribeGitStatus = subscribeGitStatus(() => refreshStatusBar(state));
+
+    if (state.enabled) {
       installStatusBarUi(state, context);
     }
   });
 
-  pi.on("tool_result", async (rawEvent) => {
-    const event = rawEvent as ToolResultEventLike;
-
-    if (event.toolName === "write" || event.toolName === "edit") {
-      invalidateGitStatus();
-    }
-
-    if (event.toolName === "bash" && event.input?.command) {
-      const command = String(event.input.command);
-      if (mightChangeGitBranch(command)) {
-        invalidateGitAndRender(state, FAST_BRANCH_RERENDER_DELAYS_MS);
-      }
-    }
+  pi.on("session_shutdown", async () => {
+    clearScheduledTimers(state);
+    clearClockTimer(state);
+    state.unsubscribeGitStatus?.();
+    state.unsubscribeGitStatus = null;
+    disposeGitStatus();
+    uninstallStatusBarUi(state);
+    state.runtimeContext = null;
   });
 
-  pi.on("user_bash", async (rawEvent) => {
-    const event = rawEvent as UserBashEventLike;
-    if (!mightChangeGitBranch(event.command)) {
-      return;
-    }
+  pi.on("tool_result", async (event, context) => {
+    const mayHaveMutatedFiles = event.toolName === "bash"
+      || (!event.isError && (event.toolName === "write" || event.toolName === "edit"));
+    if (!mayHaveMutatedFiles) return;
 
-    invalidateGitAndRender(state, BRANCH_RERENDER_DELAYS_MS);
-  });
-
-  pi.on("model_select", async (rawEvent, rawContext) => {
-    const event = rawEvent as ModelSelectEventLike;
-    const context = rawContext as RuntimeContextLike;
-
-    updateRuntimeContext(state, context);
-    state.activeModel = event.model;
-    refreshStatusBar(state);
-  });
-
-  pi.on("session_compact", async (_rawEvent, rawContext) => {
-    const context = rawContext as RuntimeContextLike;
+    setGitStatusCwd(context.cwd);
+    invalidateGitStatus();
     refreshStatusBar(state, context);
   });
 
-  pi.on("message_end", async () => {
-    refreshStatusBar(state);
+  pi.on("user_bash", async (event, context) => {
+    state.runtimeContext = context;
+    setGitStatusCwd(event.cwd);
+    scheduleUserBashRefresh(state, event.cwd);
+  });
+
+  pi.on("thinking_level_select", async (event, context) => {
+    state.thinkingLevel = event.level;
+    refreshStatusBar(state, context);
+  });
+
+  pi.on("model_select", async (_event, context) => {
+    state.thinkingLevel = pi.getThinkingLevel();
+    refreshStatusBar(state, context);
+  });
+
+  pi.on("session_compact", async (_event, context) => {
+    refreshStatusBar(state, context);
+  });
+
+  pi.on("session_tree", async (_event, context) => {
+    refreshStatusBar(state, context);
+  });
+
+  pi.on("turn_end", async (_event, context) => {
+    refreshStatusBar(state, context);
+  });
+
+  pi.on("agent_settled", async (_event, context) => {
+    refreshStatusBar(state, context);
   });
 
   pi.registerCommand("powerline", {
     description: "Configure powerline status (toggle, preset)",
-    handler: async (args, rawContext) => {
-      const context = rawContext as RuntimeContextLike;
+    handler: async (args, context) => {
       state.runtimeContext = context;
-      state.activeModel = context.model;
+      state.thinkingLevel = pi.getThinkingLevel();
 
       if (!args?.trim()) {
         toggleStatusBar(state, context);
@@ -260,21 +319,23 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       const presetCandidate = args.trim().toLowerCase();
       if (!isKnownPreset(presetCandidate)) {
         if (context.hasUI) {
-          const presetList = Object.keys(PRESETS).join(", ");
-          context.ui.notify(`Available presets: ${presetList}`, "info");
+          context.ui.notify(`Available presets: ${Object.keys(PRESETS).join(", ")}`, "info");
         }
         return;
       }
 
       applyPreset(state, presetCandidate);
-      saveStatusbarConfig({ preset: presetCandidate });
+      const saved = saveStatusbarConfig({ preset: presetCandidate });
 
       if (state.enabled) {
         installStatusBarUi(state, context);
       }
 
       if (context.hasUI) {
-        context.ui.notify(`Preset set to: ${presetCandidate}`, "info");
+        context.ui.notify(
+          saved ? `Preset set to: ${presetCandidate}` : `Preset applied but could not be saved: ${presetCandidate}`,
+          saved ? "info" : "warning",
+        );
       }
     },
   });

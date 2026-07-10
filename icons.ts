@@ -15,7 +15,6 @@ export interface IconSet {
   output: string;
   host: string;
   session: string;
-  auto: string;
 }
 
 // Separator characters
@@ -67,7 +66,6 @@ export const NERD_ICONS: IconSet = {
   output: "\uF08B",     // nf-fa-sign_out (output arrow)
   host: "\uF109",       // nf-fa-laptop (host)
   session: "\uF550",    // nf-md-identifier (session id)
-  auto: "\u{F0068}",    // nf-md-lightning_bolt (auto-compact)
 };
 
 // ASCII/Unicode fallback icons (matching oh-my-pi)
@@ -88,7 +86,6 @@ export const ASCII_ICONS: IconSet = {
   output: "out:",
   host: "host",
   session: "id",
-  auto: "⚡",
 };
 
 // Separator characters

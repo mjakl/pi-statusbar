@@ -20,11 +20,9 @@ const DEFAULT_COLORS: Required<ColorScheme> = {
   pi: "accent",
   model: "#d787af",
   path: "#00afaf",
-  git: "success",
   gitDirty: "warning",
   gitClean: "success",
   thinking: "muted",
-  thinkingHigh: "accent",
   thinkingMax: "error",
   context: "dim",
   contextWarn: "warning",
@@ -90,23 +88,42 @@ export function resolveColor(
     ?? DEFAULT_COLORS[semantic];
 }
 
-function isHexColor(color: ColorValue): color is `#${string}` {
-  return typeof color === "string" && color.startsWith("#");
+function isHexColor(color: unknown): color is `#${string}` {
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color);
 }
 
-function hexToAnsi(hex: string): string {
-  const h = hex.replace("#", "");
+function rgbToAnsi256(r: number, g: number, b: number): number {
+  if (r === g && g === b) {
+    if (r < 8) return 16;
+    if (r > 248) return 231;
+    return Math.round(((r - 8) / 247) * 24) + 232;
+  }
+
+  const toCube = (value: number) => Math.round((value / 255) * 5);
+  return 16 + 36 * toCube(r) + 6 * toCube(g) + toCube(b);
+}
+
+function hexToAnsi(theme: Theme, hex: `#${string}`): string {
+  const h = hex.slice(1);
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
-  return `\x1b[38;2;${r};${g};${b}m`;
+
+  return theme.getColorMode() === "256color"
+    ? `\x1b[38;5;${rgbToAnsi256(r, g, b)}m`
+    : `\x1b[38;2;${r};${g};${b}m`;
 }
 
 export function applyColor(theme: Theme, color: ColorValue, text: string): string {
   if (isHexColor(color)) {
-    return `${hexToAnsi(color)}${text}\x1b[0m`;
+    return `${hexToAnsi(theme, color)}${text}\x1b[39m`;
   }
-  return theme.fg(color as ThemeColor, text);
+
+  try {
+    return theme.fg(color as ThemeColor, text);
+  } catch {
+    return theme.fg("text", text);
+  }
 }
 
 export function fg(
@@ -118,18 +135,19 @@ export function fg(
   return applyColor(theme, resolveColor(semantic, presetColors), text);
 }
 
-export function rainbow(text: string): string {
+export function rainbow(theme: Theme, text: string): string {
   let result = "";
   let colorIndex = 0;
   for (const char of text) {
     if (char === " " || char === ":") {
       result += char;
     } else {
-      result += hexToAnsi(RAINBOW_COLORS[colorIndex % RAINBOW_COLORS.length]) + char;
+      const rainbowColor = RAINBOW_COLORS[colorIndex % RAINBOW_COLORS.length] as `#${string}`;
+      result += hexToAnsi(theme, rainbowColor) + char;
       colorIndex++;
     }
   }
-  return result + "\x1b[0m";
+  return result + "\x1b[39m";
 }
 
 export function getDefaultColors(): Required<ColorScheme> {

@@ -1,5 +1,12 @@
 import { spawn } from "node:child_process";
+import { resolve } from "node:path";
+
 import type { GitStatus } from "./types.js";
+
+interface GitCommandResult {
+  stdout: string;
+  code: number | null;
+}
 
 interface CachedGitStatus {
   staged: number;
@@ -8,31 +15,23 @@ interface CachedGitStatus {
   timestamp: number;
 }
 
-interface CachedBranch {
-  branch: string | null;
-  timestamp: number;
-}
-
-const CACHE_TTL_MS = 1000; // 1 second for file status
-const BRANCH_TTL_MS = 500; // Shorter TTL so branch updates quickly after invalidation
-
-const DEFAULT_GIT_TIMEOUT_MS = 600;
+const CACHE_TTL_MS = 1000;
 const STATUS_GIT_TIMEOUT_MS = 1500;
 const FAILURE_BACKOFF_BASE_MS = 1000;
 const FAILURE_BACKOFF_MAX_MS = 5000;
+const KILL_GRACE_MS = 100;
+const MAX_AUTOMATIC_RETRIES = 3;
 
+let currentCwd = resolve(process.cwd());
 let cachedStatus: CachedGitStatus | null = null;
-let cachedBranch: CachedBranch | null = null;
 let pendingFetch: Promise<void> | null = null;
-let pendingBranchFetch: Promise<void> | null = null;
-let invalidationCounter = 0; // Track invalidations to prevent stale updates
-let branchInvalidationCounter = 0;
-let forceStatusRefresh = false;
-let forceBranchRefresh = false;
+let invalidationCounter = 0;
+let forceStatusRefresh = true;
 let statusFailureCount = 0;
-let branchFailureCount = 0;
 let nextStatusFetchAt = 0;
-let nextBranchFetchAt = 0;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+const statusChangeListeners = new Set<() => void>();
 
 function getFailureBackoffMs(failureCount: number): number {
   const multiplier = 2 ** Math.max(0, failureCount - 1);
@@ -40,15 +39,13 @@ function getFailureBackoffMs(failureCount: number): number {
 }
 
 /**
- * Parse git status --porcelain output
- * 
+ * Parse `git status --porcelain` output.
+ *
  * Format: XY filename
  * X = index status, Y = working tree status
  * ?? = untracked
- * Other X values = staged
- * Other Y values = unstaged
  */
-function parseGitStatusOutput(output: string): { staged: number; unstaged: number; untracked: number } {
+export function parseGitStatusOutput(output: string): Pick<GitStatus, "staged" | "unstaged" | "untracked"> {
   let staged = 0;
   let unstaged = 0;
   let untracked = 0;
@@ -63,12 +60,10 @@ function parseGitStatusOutput(output: string): { staged: number; unstaged: numbe
       continue;
     }
 
-    // X position (index/staged)
     if (x && x !== " " && x !== "?") {
       staged++;
     }
 
-    // Y position (working tree/unstaged)
     if (y && y !== " ") {
       unstaged++;
     }
@@ -77,20 +72,24 @@ function parseGitStatusOutput(output: string): { staged: number; unstaged: numbe
   return { staged, unstaged, untracked };
 }
 
-function runGit(args: string[], timeoutMs = DEFAULT_GIT_TIMEOUT_MS): Promise<string | null> {
-  return new Promise((resolve) => {
+function runGit(args: string[], cwd: string, timeoutMs: number): Promise<GitCommandResult | null> {
+  return new Promise((resolveResult) => {
     const proc = spawn("git", args, {
-      stdio: ["ignore", "pipe", "pipe"],
+      cwd,
+      stdio: ["ignore", "pipe", "ignore"],
     });
 
     let stdout = "";
-    let resolved = false;
+    let settled = false;
+    let timedOut = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const finish = (result: string | null) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeoutId);
-      resolve(result);
+    const finish = (result: GitCommandResult | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      if (killTimer) clearTimeout(killTimer);
+      resolveResult(result);
     };
 
     proc.stdout.on("data", (data) => {
@@ -98,183 +97,190 @@ function runGit(args: string[], timeoutMs = DEFAULT_GIT_TIMEOUT_MS): Promise<str
     });
 
     proc.on("close", (code) => {
-      finish(code === 0 ? stdout.trim() : null);
+      // Keep porcelain output byte-for-byte: its leading column is significant.
+      finish(timedOut ? null : { stdout, code });
     });
 
     proc.on("error", () => {
       finish(null);
     });
 
-    const timeoutId = setTimeout(() => {
-      proc.kill();
-      finish(null);
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      if (!proc.kill()) {
+        finish(null);
+        return;
+      }
+
+      killTimer = setTimeout(() => {
+        proc.kill("SIGKILL");
+        finish(null);
+      }, KILL_GRACE_MS);
     }, timeoutMs);
   });
 }
 
-/**
- * Fetch current git branch asynchronously.
- * For detached HEAD, returns the short commit SHA (matches provider's "detached" behavior).
- */
-async function fetchGitBranch(): Promise<string | null> {
-  const branch = await runGit(["branch", "--show-current"]);
-  if (branch === null) return null;
-  if (branch) return branch;
+async function fetchGitStatus(cwd: string): Promise<Pick<GitStatus, "staged" | "unstaged" | "untracked"> | null> {
+  const result = await runGit(["status", "--porcelain"], cwd, STATUS_GIT_TIMEOUT_MS);
+  if (result === null) return null;
 
-  const sha = await runGit(["rev-parse", "--short", "HEAD"]);
-  return sha ? `${sha} (detached)` : "detached";
+  // A non-repository is a valid clean state, not a transient failure to retry.
+  return result.code === 0
+    ? parseGitStatusOutput(result.stdout)
+    : { staged: 0, unstaged: 0, untracked: 0 };
 }
 
-/**
- * Fetch git status asynchronously
- */
-async function fetchGitStatus(): Promise<{ staged: number; unstaged: number; untracked: number } | null> {
-  const output = await runGit(["status", "--porcelain"], STATUS_GIT_TIMEOUT_MS);
-  if (output === null) return null;
-  return parseGitStatusOutput(output);
+function statusesEqual(
+  cached: CachedGitStatus | null,
+  next: Pick<GitStatus, "staged" | "unstaged" | "untracked">,
+): boolean {
+  return cached !== null
+    && cached.staged === next.staged
+    && cached.unstaged === next.unstaged
+    && cached.untracked === next.untracked;
 }
 
-/**
- * Get the current git branch with caching.
- * Falls back to provider branch if our cache is empty.
- */
-export function getCurrentBranch(providerBranch: string | null): string | null {
+function notifyStatusChanged(): void {
+  for (const listener of statusChangeListeners) {
+    listener();
+  }
+}
+
+function clearRetryTimer(): void {
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+}
+
+function recordFetchFailure(): void {
+  statusFailureCount += 1;
+  nextStatusFetchAt = Date.now() + getFailureBackoffMs(statusFailureCount);
+  clearRetryTimer();
+
+  if (statusFailureCount <= MAX_AUTOMATIC_RETRIES) {
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      startStatusFetch();
+    }, Math.max(1, nextStatusFetchAt - Date.now()));
+  }
+}
+
+function startStatusFetch(): void {
   const now = Date.now();
-  const hasFreshCache = cachedBranch !== null && now - cachedBranch.timestamp < BRANCH_TTL_MS;
-
-  // Return cached if fresh and no forced refresh pending.
-  if (hasFreshCache && !forceBranchRefresh) {
-    return cachedBranch.branch;
+  if (pendingFetch || now < nextStatusFetchAt) {
+    return;
   }
 
-  // Trigger background fetch if not already pending and not in backoff.
-  if (!pendingBranchFetch && now >= nextBranchFetchAt) {
-    const fetchId = branchInvalidationCounter;
-    pendingBranchFetch = fetchGitBranch()
-      .then((result) => {
-        if (fetchId !== branchInvalidationCounter) {
-          return;
-        }
+  const fetchCwd = currentCwd;
+  const fetchId = invalidationCounter;
+  let promise!: Promise<void>;
 
-        if (result !== null) {
-          cachedBranch = {
-            branch: result,
-            timestamp: Date.now(),
-          };
-          forceBranchRefresh = false;
-          branchFailureCount = 0;
-          nextBranchFetchAt = 0;
-          return;
-        }
+  promise = fetchGitStatus(fetchCwd)
+    .then((result) => {
+      if (fetchCwd !== currentCwd || fetchId !== invalidationCounter) {
+        return;
+      }
 
-        branchFailureCount += 1;
-        nextBranchFetchAt = Date.now() + getFailureBackoffMs(branchFailureCount);
-      })
-      .catch(() => {
-        if (fetchId !== branchInvalidationCounter) {
-          return;
-        }
+      if (result === null) {
+        recordFetchFailure();
+        return;
+      }
 
-        branchFailureCount += 1;
-        nextBranchFetchAt = Date.now() + getFailureBackoffMs(branchFailureCount);
-      })
-      .finally(() => {
-        pendingBranchFetch = null;
-      });
-  }
+      const changed = !statusesEqual(cachedStatus, result);
+      cachedStatus = { ...result, timestamp: Date.now() };
+      forceStatusRefresh = false;
+      statusFailureCount = 0;
+      nextStatusFetchAt = 0;
+      clearRetryTimer();
 
-  // Return stale cache while refreshing; only use provider before first fetch.
-  return cachedBranch ? cachedBranch.branch : providerBranch;
+      if (changed) {
+        notifyStatusChanged();
+      }
+    })
+    .catch(() => {
+      if (fetchCwd === currentCwd && fetchId === invalidationCounter) {
+        recordFetchFailure();
+      }
+    })
+    .finally(() => {
+      if (pendingFetch !== promise) {
+        return;
+      }
+
+      pendingFetch = null;
+
+      // An invalidation during the fetch discarded its result. Start the
+      // replacement fetch without waiting for unrelated UI activity.
+      if (fetchCwd === currentCwd && fetchId !== invalidationCounter) {
+        startStatusFetch();
+      }
+    });
+
+  pendingFetch = promise;
 }
 
-/**
- * Get git status with caching.
- * Returns cached value if within TTL, otherwise triggers async fetch.
- * This is designed for synchronous render() calls - returns last known value
- * while refreshing in background.
- */
-export function getGitStatus(providerBranch: string | null): GitStatus {
-  const now = Date.now();
-  const branch = getCurrentBranch(providerBranch);
-  const hasFreshCache = cachedStatus !== null && now - cachedStatus.timestamp < CACHE_TTL_MS;
-
-  // Return cached if fresh and no forced refresh pending.
-  if (hasFreshCache && !forceStatusRefresh) {
-    return {
-      branch,
-      staged: cachedStatus.staged,
-      unstaged: cachedStatus.unstaged,
-      untracked: cachedStatus.untracked,
-    };
+export function setGitStatusCwd(cwd: string): void {
+  const resolvedCwd = resolve(cwd);
+  if (resolvedCwd === currentCwd) {
+    return;
   }
 
-  // Trigger background fetch if not already pending and not in backoff.
-  if (!pendingFetch && now >= nextStatusFetchAt) {
-    const fetchId = invalidationCounter;
-    pendingFetch = fetchGitStatus()
-      .then((result) => {
-        if (fetchId !== invalidationCounter) {
-          return;
-        }
-
-        if (result) {
-          cachedStatus = {
-            staged: result.staged,
-            unstaged: result.unstaged,
-            untracked: result.untracked,
-            timestamp: Date.now(),
-          };
-          forceStatusRefresh = false;
-          statusFailureCount = 0;
-          nextStatusFetchAt = 0;
-          return;
-        }
-
-        statusFailureCount += 1;
-        nextStatusFetchAt = Date.now() + getFailureBackoffMs(statusFailureCount);
-      })
-      .catch(() => {
-        if (fetchId !== invalidationCounter) {
-          return;
-        }
-
-        statusFailureCount += 1;
-        nextStatusFetchAt = Date.now() + getFailureBackoffMs(statusFailureCount);
-      })
-      .finally(() => {
-        pendingFetch = null;
-      });
-  }
-
-  // Return last cached or empty.
-  if (cachedStatus) {
-    return {
-      branch,
-      staged: cachedStatus.staged,
-      unstaged: cachedStatus.unstaged,
-      untracked: cachedStatus.untracked,
-    };
-  }
-
-  return { branch, staged: 0, unstaged: 0, untracked: 0 };
-}
-
-/**
- * Force refresh git status (call when you know files changed).
- * Keeps last known values to avoid UI flicker while refresh is in-flight.
- */
-export function invalidateGitStatus(): void {
-  invalidationCounter++; // Invalidate any pending fetch result
+  currentCwd = resolvedCwd;
+  cachedStatus = null;
+  pendingFetch = null;
+  invalidationCounter += 1;
   forceStatusRefresh = true;
+  statusFailureCount = 0;
   nextStatusFetchAt = 0;
+  clearRetryTimer();
+}
+
+export function subscribeGitStatus(listener: () => void): () => void {
+  statusChangeListeners.add(listener);
+  return () => statusChangeListeners.delete(listener);
 }
 
 /**
- * Force refresh git branch (call when you know branch might have changed).
- * Keeps last known value to avoid UI flicker while refresh is in-flight.
+ * Return the last known counters and refresh them asynchronously when stale.
+ * Branch updates come from Pi's cwd-aware footer data provider.
  */
-export function invalidateGitBranch(): void {
-  branchInvalidationCounter++;
-  forceBranchRefresh = true;
-  nextBranchFetchAt = 0;
+export function getGitStatus(providerBranch: string | null, cwd: string): GitStatus {
+  setGitStatusCwd(cwd);
+
+  const now = Date.now();
+  const hasFreshCache = cachedStatus !== null && now - cachedStatus.timestamp < CACHE_TTL_MS;
+  if (!hasFreshCache || forceStatusRefresh) {
+    startStatusFetch();
+  }
+
+  const status = cachedStatus;
+  return {
+    branch: providerBranch,
+    staged: status?.staged ?? 0,
+    unstaged: status?.unstaged ?? 0,
+    untracked: status?.untracked ?? 0,
+  };
+}
+
+/** Keep the last known values while forcing a completion-driven refresh. */
+export function invalidateGitStatus(): void {
+  invalidationCounter += 1;
+  forceStatusRefresh = true;
+  statusFailureCount = 0;
+  nextStatusFetchAt = 0;
+  clearRetryTimer();
+
+  if (!pendingFetch) {
+    startStatusFetch();
+  }
+}
+
+export function disposeGitStatus(): void {
+  invalidationCounter += 1;
+  pendingFetch = null;
+  forceStatusRefresh = true;
+  statusFailureCount = 0;
+  nextStatusFetchAt = 0;
+  clearRetryTimer();
 }

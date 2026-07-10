@@ -1,8 +1,9 @@
 import { hostname as osHostname } from "node:os";
-import { basename } from "node:path";
+import { basename, isAbsolute, relative, resolve, sep } from "node:path";
+import { sliceByColumn, visibleWidth } from "@earendil-works/pi-tui";
+
 import type { RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
 import { fg, rainbow, applyColor, resolveColor } from "./theme.js";
-import { ansi, getFgAnsiCode } from "./colors.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
 
 // Helper to apply semantic color from context
@@ -76,12 +77,59 @@ function formatInlineThinking(ctx: SegmentContext, level: string): string {
   return color(ctx, semantic, `${SEP_DOT}${thinkingText}`);
 }
 
-function stripAnsi(input: string): string {
-  return input.replace(/\x1b\[[0-9;]*m/g, "");
+const TERMINAL_SEQUENCE_PATTERN = (() => {
+  const stringTerminator = "(?:\\u0007|\\u001B\\u005C|\\u009C)";
+  const osc = `(?:\\u001B\\][\\s\\S]*?${stringTerminator})`;
+  const csi = "[\\u001B\\u009B][[\\]\\()#;?]*(?:\\d{1,4}(?:[;:]\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]";
+  return new RegExp(`${osc}|${csi}`, "g");
+})();
+
+export function sanitizeStatusText(input: string): string {
+  return input
+    .replace(TERMINAL_SEQUENCE_PATTERN, "")
+    .replace(/[\r\n\t]/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/ +/g, " ")
+    .trim();
 }
 
-function colorAsSeparator(text: string): string {
-  return `${getFgAnsiCode("sep")}${text}${ansi.reset}`;
+function colorAsSeparator(ctx: SegmentContext, text: string): string {
+  return color(ctx, "separator", text);
+}
+
+function getModelName(model: SegmentContext["model"]): string {
+  let name = sanitizeStatusText(model?.name || model?.id || "no-model") || "no-model";
+  if (name.startsWith("Claude ")) {
+    name = name.slice(7);
+  }
+  return name;
+}
+
+function getModelKey(model: SegmentContext["model"]): string | undefined {
+  const provider = sanitizeStatusText(model?.provider?.trim() ?? "") || undefined;
+  const modelId = sanitizeStatusText(model?.id?.trim() ?? "") || undefined;
+  return provider && modelId ? `${provider}/${modelId}` : modelId || provider;
+}
+
+function formatCwd(cwd: string, home: string | undefined): string {
+  if (!home) return cwd;
+
+  const resolvedCwd = resolve(cwd);
+  const resolvedHome = resolve(home);
+  const relativeToHome = relative(resolvedHome, resolvedCwd);
+  const isInsideHome = relativeToHome === ""
+    || (relativeToHome !== ".." && !relativeToHome.startsWith(`..${sep}`) && !isAbsolute(relativeToHome));
+
+  if (!isInsideHome) return cwd;
+  return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
+}
+
+function truncatePathFromStart(path: string, maxWidth: number): string {
+  const width = visibleWidth(path);
+  if (width <= maxWidth) return path;
+  if (maxWidth <= 1) return "…";
+
+  return `…${sliceByColumn(path, width - (maxWidth - 1), maxWidth - 1, true)}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -104,17 +152,8 @@ const modelSegment: StatusLineSegment = {
     const icons = getIcons();
     const opts = ctx.options.model ?? {};
 
-    let modelName = ctx.model?.name || ctx.model?.id || "no-model";
-    // Strip "Claude " prefix for brevity
-    if (modelName.startsWith("Claude ")) {
-      modelName = modelName.slice(7);
-    }
-
-    const provider = ctx.model?.provider?.trim();
-    const modelId = ctx.model?.id?.trim();
-    const modelKey = provider && modelId
-      ? `${provider}/${modelId}`
-      : modelId || provider;
+    const modelName = getModelName(ctx.model);
+    const modelKey = getModelKey(ctx.model);
 
     let content = color(ctx, "model", withIcon(icons.model, modelName));
 
@@ -140,11 +179,7 @@ const modelKeySegment: StatusLineSegment = {
     const icons = getIcons();
     const opts = ctx.options.model ?? {};
 
-    const provider = ctx.model?.provider?.trim();
-    const modelId = ctx.model?.id?.trim();
-    const modelKey = provider && modelId
-      ? `${provider}/${modelId}`
-      : modelId || provider || "no-model";
+    const modelKey = getModelKey(ctx.model) || "no-model";
 
     let content = color(ctx, "model", withIcon(icons.model, modelKey));
 
@@ -166,12 +201,7 @@ const modelNameSegment: StatusLineSegment = {
     const icons = getIcons();
     const opts = ctx.options.model ?? {};
 
-    let modelName = ctx.model?.name || ctx.model?.id || "no-model";
-    // Strip "Claude " prefix for brevity
-    if (modelName.startsWith("Claude ")) {
-      modelName = modelName.slice(7);
-    }
-
+    const modelName = getModelName(ctx.model);
     let content = color(ctx, "model", withIcon(icons.model, modelName));
 
     // Add thinking level with dot separator
@@ -193,30 +223,24 @@ const pathSegment: StatusLineSegment = {
     const opts = ctx.options.path ?? {};
     const mode = opts.mode ?? "basename";
 
-    let pwd = process.cwd();
+    let pwd = ctx.cwd;
     const home = process.env.HOME || process.env.USERPROFILE;
 
     if (mode === "basename") {
-      // Just the last directory component (cross-platform)
       pwd = basename(pwd) || pwd;
     } else {
-      // Abbreviate home directory for abbreviated/full modes
-      if (home && pwd.startsWith(home)) {
-        pwd = `~${pwd.slice(home.length)}`;
-      }
+      pwd = formatCwd(pwd, home);
 
-      // Strip /work/ prefix (common in containers)
+      // Strip /work/ prefix (common in containers).
       if (pwd.startsWith("/work/")) {
         pwd = pwd.slice(6);
       }
 
-      // Truncate if too long (only for abbreviated mode)
-      if (mode === "abbreviated") {
-        const maxLen = opts.maxLength ?? 40;
-        if (pwd.length > maxLen) {
-          pwd = `…${pwd.slice(-(maxLen - 1))}`;
-        }
-      }
+    }
+
+    pwd = sanitizeStatusText(pwd);
+    if (mode === "abbreviated") {
+      pwd = truncatePathFromStart(pwd, opts.maxLength ?? 40);
     }
 
     const content = withIcon(icons.folder, pwd);
@@ -300,7 +324,7 @@ const thinkingSegment: StatusLineSegment = {
 
     // Use rainbow effect for high/xhigh (like Claude Code ultrathink)
     if (level === "high" || level === "xhigh") {
-      return { content: rainbow(content), visible: true };
+      return { content: rainbow(ctx.theme, content), visible: true };
     }
 
     // Use thinking color for lower levels
@@ -355,7 +379,9 @@ const costSegment: StatusLineSegment = {
       return { content: "", visible: false };
     }
 
-    const costDisplay = usingSubscription ? "(sub)" : `$${cost.toFixed(2)}`;
+    const costDisplay = usingSubscription
+      ? cost ? `$${cost.toFixed(2)} (sub)` : "(sub)"
+      : `$${cost.toFixed(2)}`;
     return { content: color(ctx, "cost", costDisplay), visible: true };
   },
 };
@@ -368,16 +394,15 @@ const contextPctSegment: StatusLineSegment = {
     const window = ctx.contextWindow;
     if (!window) return { content: "", visible: false };
 
-    const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
     if (pct === null) {
-      const text = `?/${formatTokens(window)}${autoIcon}`;
+      const text = `?/${formatTokens(window)}`;
       return {
         content: withIcon(icons.contextMedium || icons.context, color(ctx, "context", text)),
         visible: true,
       };
     }
 
-    const text = `${pct.toFixed(1)}%/${formatTokens(window)}${autoIcon}`;
+    const text = `${pct.toFixed(1)}%/${formatTokens(window)}`;
     const contextIcon = pct < 20
       ? icons.contextLow
       : pct <= 80
@@ -509,17 +534,14 @@ const extensionStatusesSegment: StatusLineSegment = {
     // Recolor extension statuses to match the statusbar separator. Extension
     // statuses are often bright because they are authored for the default footer;
     // stripping ANSI here keeps them visible but visually secondary.
-    const parts: string[] = [];
-    for (const value of statuses.values()) {
-      const text = stripAnsi(value ?? "").trim();
-      if (text) {
-        parts.push(text);
-      }
-    }
+    const parts = Array.from(statuses.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([, value]) => sanitizeStatusText(value ?? ""))
+      .filter(Boolean);
 
     if (parts.length === 0) return { content: "", visible: false };
 
-    const content = colorAsSeparator(parts.join(` ${SEP_DOT} `));
+    const content = colorAsSeparator(ctx, parts.join(SEP_DOT));
     return { content, visible: true };
   },
 };
