@@ -14,7 +14,10 @@ import { createTestTheme } from "./helpers.js";
 type EditorFactory = NonNullable<ReturnType<ExtensionUIContext["getEditorComponent"]>>;
 type WidgetFactory = (tui: TUI, theme: Theme) => Component;
 
-function createUiHarness(previousEditor?: EditorFactory) {
+function createUiHarness(
+  previousEditor?: EditorFactory,
+  mode: ExtensionContext["mode"] = "tui",
+) {
   const theme = createTestTheme();
   const tui = { requestRender() {} } as unknown as TUI;
   const footerData = {
@@ -46,7 +49,7 @@ function createUiHarness(previousEditor?: EditorFactory) {
     },
   } as unknown as ExtensionUIContext;
 
-  const context = { mode: "tui", ui } as unknown as ExtensionContext;
+  const context = { mode, ui } as unknown as ExtensionContext;
   return {
     context,
     getEditorFactory: () => editorFactory,
@@ -63,6 +66,31 @@ const setupDefaults = {
   onBranchChanged: () => {},
   onInvalidate: () => {},
 };
+
+test("setup is inert and cleanup is safe outside TUI mode", () => {
+  for (const mode of ["rpc", "json", "print"] as const) {
+    const previousEditor = (() => ({ render: () => [], invalidate() {} })) as unknown as EditorFactory;
+    const harness = createUiHarness(previousEditor, mode);
+    let callbackCount = 0;
+
+    const dispose = setupStatusBarUi({
+      context: harness.context,
+      ...setupDefaults,
+      onFooterDataProviderChanged: () => callbackCount++,
+      onTuiChanged: () => callbackCount++,
+      onBranchChanged: () => callbackCount++,
+      onInvalidate: () => callbackCount++,
+    });
+
+    assert.equal(harness.getEditorFactory(), previousEditor);
+    assert.equal(harness.getWidgetFactory(), undefined);
+    assert.equal(harness.getFooterComponent(), undefined);
+    assert.equal(callbackCount, 0);
+    dispose();
+    dispose();
+    assert.equal(callbackCount, 0);
+  }
+});
 
 test("an existing custom editor is preserved and status uses a widget", () => {
   const previousEditor = (() => ({ render: () => [], invalidate() {} })) as unknown as EditorFactory;

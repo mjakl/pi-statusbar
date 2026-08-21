@@ -26,6 +26,7 @@ const HORIZONTAL_BORDER = "─";
 
 interface PowerlineState {
   enabled: boolean;
+  initialized: boolean;
   preset: StatusLinePreset;
   sessionStartTime: number;
   runtimeContext: ExtensionContext | null;
@@ -53,8 +54,9 @@ function getInitialPreset(): StatusLinePreset {
 function createInitialState(): PowerlineState {
   return {
     enabled: true,
-    preset: getInitialPreset(),
-    sessionStartTime: Date.now(),
+    initialized: false,
+    preset: "default",
+    sessionStartTime: 0,
     runtimeContext: null,
     thinkingLevel: "off",
     footerDataProvider: null,
@@ -210,6 +212,11 @@ function setRuntimeContext(
   context: ExtensionContext,
   thinkingLevel: ThinkingLevel,
 ): void {
+  if (!state.initialized) {
+    state.preset = getInitialPreset();
+    state.initialized = true;
+  }
+
   state.runtimeContext = context;
   state.thinkingLevel = thinkingLevel;
   state.sessionStartTime = Date.now();
@@ -243,6 +250,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   const state = createInitialState();
 
   pi.on("session_start", async (_event, context) => {
+    if (context.mode !== "tui") return;
+
     setRuntimeContext(state, context, pi.getThinkingLevel());
 
     state.unsubscribeGitStatus?.();
@@ -254,6 +263,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    if (!state.runtimeContext) return;
+
     clearScheduledTimers(state);
     clearClockTimer(state);
     state.unsubscribeGitStatus?.();
@@ -264,6 +275,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.on("tool_result", async (event, context) => {
+    if (context.mode !== "tui") return;
+
     const mayHaveMutatedFiles = event.toolName === "bash"
       || (!event.isError && (event.toolName === "write" || event.toolName === "edit"));
     if (!mayHaveMutatedFiles) return;
@@ -274,40 +287,52 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.on("user_bash", async (event, context) => {
+    if (context.mode !== "tui") return;
+
     state.runtimeContext = context;
     setGitStatusCwd(event.cwd);
     scheduleUserBashRefresh(state, event.cwd);
   });
 
   pi.on("thinking_level_select", async (event, context) => {
+    if (context.mode !== "tui") return;
+
     state.thinkingLevel = event.level;
     refreshStatusBar(state, context);
   });
 
   pi.on("model_select", async (_event, context) => {
+    if (context.mode !== "tui") return;
+
     state.thinkingLevel = pi.getThinkingLevel();
     refreshStatusBar(state, context);
   });
 
   pi.on("session_compact", async (_event, context) => {
+    if (context.mode !== "tui") return;
     refreshStatusBar(state, context);
   });
 
   pi.on("session_tree", async (_event, context) => {
+    if (context.mode !== "tui") return;
     refreshStatusBar(state, context);
   });
 
   pi.on("turn_end", async (_event, context) => {
+    if (context.mode !== "tui") return;
     refreshStatusBar(state, context);
   });
 
   pi.on("agent_settled", async (_event, context) => {
+    if (context.mode !== "tui") return;
     refreshStatusBar(state, context);
   });
 
   pi.registerCommand("powerline", {
     description: "Configure powerline status (toggle, preset)",
     handler: async (args, context) => {
+      if (context.mode !== "tui") return;
+
       state.runtimeContext = context;
       state.thinkingLevel = pi.getThinkingLevel();
 

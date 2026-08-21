@@ -102,6 +102,10 @@ function createStatusWidget(
  * assuming that editor has CustomEditor's border shape.
  */
 export function setupStatusBarUi(params: SetupStatusBarUiParams): () => void {
+  if (params.context.mode !== "tui") {
+    return () => {};
+  }
+
   const {
     context,
     getLayout,
